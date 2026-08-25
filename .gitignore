@@ -36,3 +36,8 @@ logs/
 
 # OS
 .DS_Store
+
+# Metals / BSP
+.metals/
+.bloop/
+.bsp/
