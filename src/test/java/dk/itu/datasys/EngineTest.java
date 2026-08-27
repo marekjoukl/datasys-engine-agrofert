@@ -8,6 +8,6 @@ class EngineTest {
 
     @Test
     void teamName() {
-        assertEquals("Team agrofert", new Engine().teamName());
+        assertEquals("Team AGROFERT", new Engine().teamName());
     }
 }
