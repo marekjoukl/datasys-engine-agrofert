@@ -15,7 +15,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public final class StorageEngine {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(StorageEngine.class);
 
     private static final int DEFAULT_MAX_ROWS_PER_PARTITION = 1024;
 
@@ -48,6 +53,8 @@ public final class StorageEngine {
     }
 
     public void createTable(String tableName, List<ColumnSpec> columns) {
+        long startedAt = System.nanoTime();
+
         if (columns.isEmpty()) {
             throw new IllegalArgumentException("table " + tableName + " needs at least one column");
         }
@@ -69,9 +76,13 @@ public final class StorageEngine {
         }
 
         TableCatalog.save(new TableCatalog(tableName, columns,false, List.of()), catalogFile(tableName));
+
+        LOGGER.debug("table={} columns={} durationMs={}",
+                field(tableName), columns.size(), millisSince(startedAt));
     }
 
     public void copyFile(String tableName, String csvFilePath) {
+        long startedAt = System.nanoTime();
         TableCatalog catalog = requireCatalog(tableName);
 
         if (catalog.copied()) {
@@ -85,6 +96,10 @@ public final class StorageEngine {
         TableCatalog.save(
                 new TableCatalog(tableName, catalog.columns(), true, partitions),
                 catalogFile(tableName));
+
+        LOGGER.debug("table={} file={} rows={} partitions={} durationMs={}",
+                field(tableName), field(Path.of(csvFilePath).getFileName()),
+                rows.size(), partitions.size(), millisSince(startedAt));
     }
 
     private static List<Object[]> readCsv (String csvFilePath, List<ColumnSpec> columns) {
@@ -117,6 +132,7 @@ public final class StorageEngine {
 
         List<PartitionMeta> partitions = new ArrayList<>();
         String dataFileName = tableName + ".data";
+        int partitionIndex = 0;
 
         for (int start = 0; start < rows.size(); start += maxRowsPerPartition) {
             int end = Math.min(start + maxRowsPerPartition, rows.size());
@@ -143,9 +159,14 @@ public final class StorageEngine {
                         offset, length,
                         String.valueOf(minMax.min()),
                         String.valueOf(minMax.max())));
+
+                LOGGER.debug("table={} partition={} column={} min={} max={}",
+                        field(tableName), partitionIndex, field(column.name()),
+                        field(minMax.min()), field(minMax.max()));
             }
 
             partitions.add(new PartitionMeta(dataFileName, partitionRows.size(), chunks));
+            partitionIndex++;
         }
 
         buffer.flip();
@@ -172,17 +193,26 @@ public final class StorageEngine {
         ColumnSpec column = columns.get(columnIndex);
         requireMatchingConstant(column, constant);
 
+        long startedAt = System.nanoTime();
+        List<PartitionMeta> partitions = catalog.partitions();
         List<Object[]> rows = new ArrayList<>();
         Map<String, DataFile> openFiles = new LinkedHashMap<>();
         int partitionsRead = 0;
         int partitionsPruned = 0;
 
         try {
-            for (PartitionMeta partition : catalog.partitions()) {
+            for (int p = 0; p < partitions.size(); p++) {
+                PartitionMeta partition = partitions.get(p);
                 ChunkMeta chunk = partition.chunks().get(columnName);
                 MinMax summary = Summaries.parse(column.type(), chunk.min(), chunk.max());
+                boolean read = Pruner.shouldRead(comparison, constant, summary);
 
-                if (!Pruner.shouldRead(comparison, constant, summary)) {
+                LOGGER.debug(
+                        "table={} column={} comparison={} const={} partition={} min={} max={} decision={}",
+                        field(tableName), field(columnName), comparison, field(constant), p,
+                        field(summary.min()), field(summary.max()), read ? "READ" : "PRUNED");
+
+                if (!read) {
                     partitionsPruned++;
                     continue;
                 }
@@ -201,7 +231,15 @@ public final class StorageEngine {
             }
         }
 
-        lastScanStats = new ScanStats(catalog.partitions().size(), partitionsRead, partitionsPruned);
+        lastScanStats = new ScanStats(partitions.size(), partitionsRead, partitionsPruned);
+
+        LOGGER.debug(
+                "table={} column={} comparison={} const={} partitionsTotal={} partitionsRead={}"
+                + " partitionsPruned={} rowsOut={} durationMs={}",
+                field(tableName), field(columnName), comparison, field(constant),
+                lastScanStats.partitionsTotal(), lastScanStats.partitionsRead(),
+                lastScanStats.partitionsPruned(), rows.size(), millisSince(startedAt));
+
         return rows;
     }
 
@@ -268,5 +306,13 @@ public final class StorageEngine {
                     + " so the constant must be " + expected.getSimpleName()
                     + " but was " + (constant == null ? "null" : constant.getClass().getSimpleName()));
         }
+    }
+
+    private static long millisSince(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
+    private static String field(Object value) {
+        return String.valueOf(value).replace(',', '_');
     }
 }
