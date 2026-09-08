@@ -27,4 +27,10 @@ final class Summaries {
         return new MinMax(min, max);
     }
 
+    static MinMax parse(ColumnType type, String min, String max) {
+        return new MinMax(
+                CsvParser.parseValue(type, min),
+                CsvParser.parseValue(type, max));
+    }
+
 }
