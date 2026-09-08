@@ -21,9 +21,6 @@ public final class StorageEngine {
 
     private final Path dataDirectory;
     private final int maxRowsPerPartition;
-    private static final byte[] MAGIC = {'A', 'G', 'R', 'O'};
-    private static final short FORMAT_VERSION = 1;
-    private static final int HEADER_SIZE = MAGIC.length + Short.BYTES;
 
     public StorageEngine(Path dataDirectory) {
         this(dataDirectory, DEFAULT_MAX_ROWS_PER_PARTITION);
@@ -107,7 +104,7 @@ public final class StorageEngine {
     }
 
     private List<PartitionMeta> writeDataFile(String tableName, List<ColumnSpec> columns, List<Object[]> rows) {
-        int totalSize = HEADER_SIZE;
+        int totalSize = DataFile.HEADER_SIZE;
         for (Object[] row : rows) {
             for (int c = 0; c < columns.size(); c++) {
                 totalSize += ValueCodec.encodedSize(columns.get(c).type(), row[c]);
@@ -115,8 +112,7 @@ public final class StorageEngine {
         }
 
         ByteBuffer buffer = ValueCodec.allocate(totalSize);
-        buffer.put(MAGIC);
-        buffer.putShort(FORMAT_VERSION);
+        DataFile.writeHeader(buffer);
 
         List<PartitionMeta> partitions = new ArrayList<>();
         String dataFileName = tableName + ".data";
