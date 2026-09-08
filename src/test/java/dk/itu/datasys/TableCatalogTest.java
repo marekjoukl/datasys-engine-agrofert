@@ -17,6 +17,7 @@ class TableCatalogTest {
                 "trips",
                 List.of(new ColumnSpec("city", ColumnType.STRING),
                         new ColumnSpec("distance", ColumnType.LONG)),
+                false,
                 List.of());
 
         Path file = dir.resolve("catalog.json");
@@ -30,6 +31,7 @@ class TableCatalogTest {
         TableCatalog catalog = new TableCatalog(
                 "trips",
                 List.of(new ColumnSpec("distance", ColumnType.LONG)),
+                true,
                 List.of(new PartitionMeta(
                         "trips.data",
                         2,

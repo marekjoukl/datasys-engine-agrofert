@@ -70,13 +70,13 @@ public final class StorageEngine {
             throw new UncheckedIOException(e);
         }
 
-        TableCatalog.save(new TableCatalog(tableName, columns, List.of()), catalogFile(tableName));
+        TableCatalog.save(new TableCatalog(tableName, columns,false, List.of()), catalogFile(tableName));
     }
 
     public void copyFile(String tableName, String csvFilePath) {
         TableCatalog catalog = requireCatalog(tableName);
 
-        if (!catalog.partitions().isEmpty()) {
+        if (catalog.copied()) {
             throw new UnsupportedOperationException(
                     "table " + tableName + " already has data");
         }
@@ -85,7 +85,7 @@ public final class StorageEngine {
         List<PartitionMeta> partitions = writeDataFile(tableName, catalog.columns(), rows);
 
         TableCatalog.save(
-                new TableCatalog(tableName, catalog.columns(), partitions),
+                new TableCatalog(tableName, catalog.columns(), true, partitions),
                 catalogFile(tableName));
     }
 

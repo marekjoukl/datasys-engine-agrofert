@@ -10,7 +10,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-record TableCatalog(String name, List<ColumnSpec> columns, List<PartitionMeta> partitions) {
+record TableCatalog(String name, List<ColumnSpec> columns, boolean copied, List<PartitionMeta> partitions) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     static void save(TableCatalog catalog, Path file) {

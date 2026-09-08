@@ -145,6 +145,24 @@ class CopyFileIT {
                 "a failed copy must not leave a data file");
     }
 
+    @Test
+    void secondCopyIsRejectedEvenWhenTheFirstWasEmpty(@TempDir Path dir) throws Exception {
+        Path emptyCsv = dir.resolve("empty.csv");
+        Files.writeString(emptyCsv, "");
+
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", TRIPS);
+        engine.copyFile("trips", emptyCsv.toString());
+
+        TableCatalog catalog = TableCatalog.load(dir.resolve("trips").resolve("catalog.json"));
+        assertTrue(catalog.partitions().isEmpty(), "an empty CSV produces no partitions");
+        assertTrue(catalog.copied(), "the table has still been copied into");
+
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> engine.copyFile("trips", GOLDEN_CSV));
+    }
+
     private static void assertMinMax(PartitionMeta partition, String column, String min, String max) {
         ChunkMeta chunk = partition.chunks().get(column);
         assertEquals(min, chunk.min(), column + " min");
