@@ -1,6 +1,7 @@
 package dk.itu.datasys;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
 final class ValueCodec {
@@ -31,5 +32,16 @@ final class ValueCodec {
         } else {
             throw new UnsupportedOperationException();
         }
+    }
+
+    static ByteBuffer allocate(int capacity) {
+        return ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN);
+    }
+
+    static int encodedSize (ColumnType type, Object value) {
+        return switch (type) {
+            case LONG, DOUBLE -> 8;
+            case STRING -> 4 + ((String) value).getBytes(StandardCharsets.US_ASCII).length;
+        };
     }
 }

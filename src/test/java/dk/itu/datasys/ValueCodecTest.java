@@ -39,4 +39,12 @@ class ValueCodecTest {
         assertEquals("Aarhus", ValueCodec.read(buffer, ColumnType.STRING));
         assertEquals(187L, ValueCodec.read(buffer, ColumnType.LONG));
     }
+
+    @Test
+    void encodedSizeMatchesBytesWritten() {
+        ByteBuffer buffer = ValueCodec.allocate(64);
+        ValueCodec.write(buffer, ColumnType.STRING, "Copenhagen");
+
+        assertEquals(buffer.position(), ValueCodec.encodedSize(ColumnType.STRING, "Copenhagen"));
+    }
 }

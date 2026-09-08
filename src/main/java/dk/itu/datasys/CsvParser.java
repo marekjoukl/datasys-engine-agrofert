@@ -4,6 +4,14 @@ import java.util.List;
 
 final class CsvParser {
 
+    static Object parseValue(ColumnType type, String text) {
+        return switch (type) {
+            case STRING -> text;
+            case LONG -> Long.parseLong(text);
+            case DOUBLE -> Double.parseDouble(text);
+        };
+    }
+
     static Object[] parseLine(List<ColumnSpec> columns, String line,
                               String fileName, int lineNumber) {
         String[] fields = line.split(",", -1);
@@ -19,11 +27,7 @@ final class CsvParser {
             String field = fields[i];
 
             try {
-                row[i] = switch (column.type()) {
-                    case STRING -> field;
-                    case LONG -> Long.parseLong(field);
-                    case DOUBLE -> Double.parseDouble(field);
-                };
+                row[i] = parseValue(column.type(), field);
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException(
                         fileName + " line " + lineNumber
