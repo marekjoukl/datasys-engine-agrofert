@@ -14,9 +14,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 public final class StorageEngine {
 
@@ -33,8 +35,22 @@ public final class StorageEngine {
     }
 
     public StorageEngine(Path dataDirectory, int maxRowsPerPartition) {
+        if (maxRowsPerPartition <= 0) {
+            throw new IllegalArgumentException(
+                    "maxRowsPerPartition must be positive but was " + maxRowsPerPartition);
+        }
         this.dataDirectory = dataDirectory;
         this.maxRowsPerPartition = maxRowsPerPartition;
+        initialiseLoggingContext();
+    }
+
+    private static void initialiseLoggingContext() {
+        if (MDC.get("sessionId") == null) {
+            MDC.put("sessionId", UUID.randomUUID().toString());
+        }
+        if (MDC.get("statementNumber") == null) {
+            MDC.put("statementNumber", "0");
+        }
     }
 
     private Path tableDirectory(String tableName) {
@@ -191,6 +207,9 @@ public final class StorageEngine {
         List<ColumnSpec> columns = catalog.columns();
         int columnIndex = columnIndex(columns, columnName);
         ColumnSpec column = columns.get(columnIndex);
+        if (comparison == null) {
+            throw new IllegalArgumentException("comparison is required");
+        }
         requireMatchingConstant(column, constant);
 
         long startedAt = System.nanoTime();
