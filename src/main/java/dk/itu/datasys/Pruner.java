@@ -9,4 +9,13 @@ final class Pruner {
                     && Summaries.compare(summary.max(), constant) >= 0;
         };
     }
+
+    static boolean matches(Comparison comparison, Object value, Object constant) {
+        int order = Summaries.compare(value, constant);
+        return switch (comparison) {
+            case GREATER_THAN -> order > 0;
+            case LESS_THAN -> order < 0;
+            case EQUALS -> order == 0;
+        };
+    }
 }
