@@ -76,4 +76,19 @@ class StorageEngineIT {
                     entries.map(p -> p.getFileName().toString()).toList());
         }
     }
+
+    @Test
+    void schemaReturnsTableColumns(@TempDir Path dir) {
+        StorageEngine engine = new StorageEngine(dir);
+        engine.createTable("trips", TRIPS);
+
+        assertEquals(TRIPS, engine.schema( "trips"));
+    }
+
+    @Test
+    void schemaRejectsAnUnknownTable(@TempDir Path dir) {
+        StorageEngine engine = new StorageEngine(dir);
+
+        assertThrows(IllegalArgumentException.class, () -> engine.schema("non-existing"));
+    }
 }
