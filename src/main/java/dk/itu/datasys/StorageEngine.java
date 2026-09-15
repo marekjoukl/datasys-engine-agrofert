@@ -14,11 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 
 public final class StorageEngine {
 
@@ -41,16 +39,7 @@ public final class StorageEngine {
         }
         this.dataDirectory = dataDirectory;
         this.maxRowsPerPartition = maxRowsPerPartition;
-        initialiseLoggingContext();
-    }
-
-    private static void initialiseLoggingContext() {
-        if (MDC.get("sessionId") == null) {
-            MDC.put("sessionId", UUID.randomUUID().toString());
-        }
-        if (MDC.get("statementNumber") == null) {
-            MDC.put("statementNumber", "0");
-        }
+        LoggingContext.initialise();
     }
 
     private Path tableDirectory(String tableName) {
@@ -66,6 +55,10 @@ public final class StorageEngine {
             throw new IllegalArgumentException("unknown table: " + tableName);
         }
         return TableCatalog.load(catalogFile(tableName));
+    }
+
+    public List<ColumnSpec> schema(String tableName) {
+        return requireCatalog(tableName).columns();
     }
 
     public void createTable(String tableName, List<ColumnSpec> columns) {

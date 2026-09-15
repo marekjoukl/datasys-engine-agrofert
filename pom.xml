@@ -14,6 +14,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <log4j.version>2.26.1</log4j.version>
     <jackson.version>2.19.0</jackson.version>
+    <antlr.version>4.13.2</antlr.version>
   </properties>
 
   <dependencies>
@@ -50,6 +51,12 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <version>${jackson.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.antlr</groupId>
+      <artifactId>antlr4-runtime</artifactId>
+      <version>${antlr.version}</version>
     </dependency>
   </dependencies>
 
@@ -91,6 +98,20 @@
         <configuration>
           <mainClass>dk.itu.datasys.Engine</mainClass>
         </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.antlr</groupId>
+        <artifactId>antlr4-maven-plugin</artifactId>
+        <version>${antlr.version}</version>
+        <configuration>
+          <visitor>true</visitor>
+        </configuration>
+        <executions>
+          <execution>
+            <goals><goal>antlr4</goal></goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
