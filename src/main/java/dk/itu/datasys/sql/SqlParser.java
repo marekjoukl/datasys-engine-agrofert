@@ -21,7 +21,7 @@ public final class SqlParser {
         @Override
         public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
                 int line, int charPositionInLine, String message, RecognitionException e) {
-            throw new SqlParseException(message, line, charPositionInLine);
+            throw new SqlParseException("line " + line + ":" + charPositionInLine + " " + message, line, charPositionInLine);
         }
     };
 
