@@ -1,5 +1,6 @@
 package dk.itu.datasys.sql;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,7 +8,6 @@ import dk.itu.datasys.ColumnSpec;
 import dk.itu.datasys.Comparison;
 
 public final class SqlPrinter {
-    /** Renders a statement back to SQL text that parses to an equal statement. */
     public String print(Statement s) {
         return switch (s) {
             case CreateTableStatement create -> printCreateTable(create);
@@ -47,6 +47,21 @@ public final class SqlPrinter {
         if (constant instanceof String text) {
             return "'" + text + "'";
         }
+        if (constant instanceof Double value) {
+            return printDouble(value);
+        }
         return String.valueOf(constant);
+    }
+
+    private static String printDouble(double value) {
+        String text = String.valueOf(value);
+        if (!text.contains("E")) {
+            return text;
+        }
+        String digits = new BigDecimal(Math.abs(value)).toPlainString();
+        if (!digits.contains(".")) {
+            digits = digits + ".0";
+        }
+        return value < 0 ? "-" + digits : digits;
     }
 }
