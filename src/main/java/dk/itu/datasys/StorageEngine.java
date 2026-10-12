@@ -259,6 +259,39 @@ public final class StorageEngine {
         return lastScanStats;
     }
 
+    public List<Object[]> readPartitionRows(String tableName, int partitionNumber) {
+        TableCatalog catalog = requireCatalog(tableName);
+        List<ColumnSpec> columns = catalog.columns();
+        PartitionMeta partition = catalog.partitions().get(partitionNumber);
+
+        int rowCount = partition.rowCount();
+
+        DataFile data = DataFile.open(tableDirectory(tableName).resolve(partition.file()));
+
+        try {
+            List<List<Object>> chunks = new ArrayList<>(columns.size());
+
+            for(ColumnSpec column : columns) {
+                chunks.add(data.readChunk(partition.chunks().get(column.name()), column.type(), rowCount));
+            }
+            List<Object[]> rows = new ArrayList<>(rowCount);
+            for (int row = 0; row < rowCount; row++) {
+                Object[] values = new Object[columns.size()];
+                for (int c = 0; c < columns.size(); c++) {
+                    values[c] = chunks.get(c).get(row);
+                }
+                rows.add(values);
+            }
+            return rows;
+        } finally {
+            data.close();
+        }
+    }
+
+    public int partitionCount(String tableName) {
+        return requireCatalog(tableName).partitions().size();
+    }
+
     private static List<Object[]> readMatchingRows(DataFile data, List<ColumnSpec> columns,
                                                    PartitionMeta partition, int columnIndex,
                                                    Comparison comparison, Object constant) {
