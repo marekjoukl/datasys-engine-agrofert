@@ -13,10 +13,14 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import dk.itu.datasys.sql.Predicate;
+import dk.itu.datasys.sql.SelectStatement;
 
 public final class StorageEngine {
 
@@ -206,44 +210,11 @@ public final class StorageEngine {
         requireMatchingConstant(column, constant);
 
         long startedAt = System.nanoTime();
-        List<PartitionMeta> partitions = catalog.partitions();
-        List<Object[]> rows = new ArrayList<>();
-        Map<String, DataFile> openFiles = new LinkedHashMap<>();
-        int partitionsRead = 0;
-        int partitionsPruned = 0;
+        Plan plan = new Planner(this).plan(new SelectStatement(tableName,
+                Optional.of(new Predicate(columnName, comparison, constant))));
+        lastScanStats = plan.scanStats();
 
-        try {
-            for (int p = 0; p < partitions.size(); p++) {
-                PartitionMeta partition = partitions.get(p);
-                ChunkMeta chunk = partition.chunks().get(columnName);
-                MinMax summary = Summaries.parse(column.type(), chunk.min(), chunk.max());
-                boolean read = Pruner.shouldRead(comparison, constant, summary);
-
-                LOGGER.debug(
-                        "table={} column={} comparison={} const={} partition={} min={} max={} decision={}",
-                        field(tableName), field(columnName), comparison, field(constant), p,
-                        field(summary.min()), field(summary.max()), read ? "READ" : "PRUNED");
-
-                if (!read) {
-                    partitionsPruned++;
-                    continue;
-                }
-
-                partitionsRead++;
-                DataFile data = openFiles.computeIfAbsent(
-                        partition.file(),
-                        file -> DataFile.open(tableDirectory(tableName).resolve(file)));
-
-                rows.addAll(readMatchingRows(
-                        data, columns, partition, columnIndex, comparison, constant));
-            }
-        } finally {
-            for (DataFile data : openFiles.values()) {
-                data.close();
-            }
-        }
-
-        lastScanStats = new ScanStats(partitions.size(), partitionsRead, partitionsPruned);
+        List<Object[]> rows = plan.root().rows();
 
         LOGGER.debug(
                 "table={} column={} comparison={} const={} partitionsTotal={} partitionsRead={}"
@@ -290,43 +261,6 @@ public final class StorageEngine {
 
     public int partitionCount(String tableName) {
         return requireCatalog(tableName).partitions().size();
-    }
-
-    private static List<Object[]> readMatchingRows(DataFile data, List<ColumnSpec> columns,
-                                                   PartitionMeta partition, int columnIndex,
-                                                   Comparison comparison, Object constant) {
-        ColumnSpec column = columns.get(columnIndex);
-        List<Object> predicateValues = data.readChunk(
-                partition.chunks().get(column.name()), column.type(), partition.rowCount());
-
-        List<Integer> matching = new ArrayList<>();
-        for (int row = 0; row < predicateValues.size(); row++) {
-            if (Pruner.matches(comparison, predicateValues.get(row), constant)) {
-                matching.add(row);
-            }
-        }
-        if (matching.isEmpty()) {
-            return List.of();
-        }
-
-        List<List<Object>> chunks = new ArrayList<>(columns.size());
-        for (int c = 0; c < columns.size(); c++) {
-            ColumnSpec other = columns.get(c);
-            chunks.add(c == columnIndex
-                    ? predicateValues
-                    : data.readChunk(partition.chunks().get(other.name()),
-                            other.type(), partition.rowCount()));
-        }
-
-        List<Object[]> rows = new ArrayList<>(matching.size());
-        for (int row : matching) {
-            Object[] values = new Object[columns.size()];
-            for (int c = 0; c < columns.size(); c++) {
-                values[c] = chunks.get(c).get(row);
-            }
-            rows.add(values);
-        }
-        return rows;
     }
 
     static int columnIndex(List<ColumnSpec> columns, String columnName) {
