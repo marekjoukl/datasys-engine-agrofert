@@ -329,7 +329,7 @@ public final class StorageEngine {
         return rows;
     }
 
-    private static int columnIndex(List<ColumnSpec> columns, String columnName) {
+    static int columnIndex(List<ColumnSpec> columns, String columnName) {
         for (int i = 0; i < columns.size(); i++) {
             if (columns.get(i).name().equals(columnName)) {
                 return i;
