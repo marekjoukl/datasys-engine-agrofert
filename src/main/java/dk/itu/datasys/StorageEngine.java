@@ -357,7 +357,19 @@ public final class StorageEngine {
         return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
-    private static String field(Object value) {
+    static String field(Object value) {
         return String.valueOf(value).replace(',', '_');
+    }
+
+    List<MinMax> columnRanges(String tableName, int columnIndex) {
+        TableCatalog catalog = requireCatalog(tableName);
+        ColumnSpec column = catalog.columns().get(columnIndex);
+
+        List<MinMax> ranges = new ArrayList<>(catalog.partitions().size());
+        for (PartitionMeta partition : catalog.partitions()) {
+            ChunkMeta chunk = partition.chunks().get(column.name());
+            ranges.add(Summaries.parse(column.type(), chunk.min(), chunk.max()));
+        }
+        return ranges;
     }
 }
