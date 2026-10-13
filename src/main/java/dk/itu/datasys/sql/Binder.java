@@ -13,7 +13,6 @@ public final class Binder {
     public Binder(StorageEngine engine) {
         this.engine = engine;
     }
-    /** Validates s against the catalog; throws IllegalArgumentException on the first violation. */
     public void bind(Statement s) {
         switch (s) {
             case CreateTableStatement create -> bindCreateTable(create);
@@ -23,7 +22,6 @@ public final class Binder {
     }
 
     private void bindCopy(CopyStatement copy) {
-        // throws if table does not exist
         engine.schema(copy.tableName());
     }
 
@@ -43,7 +41,6 @@ public final class Binder {
     }
 
     private void bindSelect(SelectStatement select){
-        // throws if table does not exist
         List<ColumnSpec> cols = engine.schema(select.tableName());
 
         if (select.where().isEmpty()) {

@@ -55,8 +55,6 @@ class FilterOperatorTest {
 
     @Test
     void comparesTheColumnThatTheWhereClauseNamed() {
-        // price < 100 keeps only the first row; distance < 100 would keep the first two,
-        // so this fails if the predicate resolved to the wrong column index.
         assertEquals(List.of(List.of("Copenhagen", 12L, 23.5)),
                 drain(filterOn("price", Comparison.LESS_THAN, 100.0)));
     }
