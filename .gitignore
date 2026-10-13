@@ -25,6 +25,7 @@ replay_pid*
 
 target/
 logs/
+data/
 
 # IDE
 .idea/

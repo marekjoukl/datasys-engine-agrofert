@@ -42,13 +42,11 @@ class CopyFileIT {
     void partitionMinMaxMatchesTheGoldenData(@TempDir Path dir) {
         List<PartitionMeta> partitions = copyGolden(dir, 2).partitions();
 
-        // distance column, partition by partition
         assertMinMax(partitions.get(0), "distance", "12", "187");
         assertMinMax(partitions.get(1), "distance", "95", "140");
         assertMinMax(partitions.get(2), "distance", "31", "210");
         assertMinMax(partitions.get(3), "distance", "88", "299");
 
-        // lexicographic ordering on a STRING column
         assertMinMax(partitions.get(0), "city", "Aarhus", "Copenhagen");
         assertMinMax(partitions.get(2), "city", "Aalborg", "Roskilde");
 
@@ -60,7 +58,7 @@ class CopyFileIT {
     void chunkOffsetsAreContiguousAfterTheHeader(@TempDir Path dir) throws Exception {
         List<PartitionMeta> partitions = copyGolden(dir, 2).partitions();
 
-        long expectedOffset = 6; // 4 magic bytes + 2 version bytes
+        long expectedOffset = 6;
         for (PartitionMeta partition : partitions) {
             for (ColumnSpec column : TRIPS) {
                 ChunkMeta chunk = partition.chunks().get(column.name());
@@ -84,7 +82,7 @@ class CopyFileIT {
         assertEquals('G', bytes[1]);
         assertEquals('R', bytes[2]);
         assertEquals('O', bytes[3]);
-        assertEquals(1, bytes[4]); // version 1, little-endian short
+        assertEquals(1, bytes[4]);
         assertEquals(0, bytes[5]);
     }
 

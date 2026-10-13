@@ -11,7 +11,6 @@ public interface Operator {
 
     void close();
 
-    /** Opens, pulls every row, closes. Whoever holds the root drains the whole tree. */
     default List<Object[]> rows() {
         List<Object[]> collected = new ArrayList<>();
         open();

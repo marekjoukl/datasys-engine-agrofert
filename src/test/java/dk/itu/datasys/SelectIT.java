@@ -193,7 +193,6 @@ class SelectIT {
 
         assertEquals(List.of(List.of("Odense", 95L, 120.75)), asLists(rows));
 
-        // [Aarhus Copenhagen] and [Copenhagen Esbjerg] both end before Odense.
         ScanStats stats = engine.lastScanStats();
         assertEquals(4, stats.partitionsTotal());
         assertEquals(2, stats.partitionsRead());
@@ -207,7 +206,6 @@ class SelectIT {
         engine.select("trips", "city", Comparison.EQUALS, "Copenhagen");
         ScanStats stats = engine.lastScanStats();
 
-        // A [Aalborg Roskilde] partition can hold Copenhagen so nothing is pruned here.
         assertEquals(4, stats.partitionsTotal());
         assertEquals(4, stats.partitionsRead());
         assertEquals(stats.partitionsTotal(), stats.partitionsRead() + stats.partitionsPruned());

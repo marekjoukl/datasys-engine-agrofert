@@ -37,7 +37,6 @@ class LoggingIT {
     void everyMinMaxCreatedDuringCopyIsLogged(@TempDir Path dir) throws Exception {
         List<String> lines = run(dir, engine -> { });
 
-        // 4 partitions x 3 columns, plus the copyFile summary line.
         assertEquals(12, messages(lines).stream().filter(m -> m.contains(" min=")).count());
         assertTrue(messages(lines).contains("table=trips partition=0 column=distance min=12 max=31"),
                 messages(lines).toString());
