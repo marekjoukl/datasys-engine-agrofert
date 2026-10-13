@@ -53,7 +53,7 @@ public final class SqlPrinter {
         return String.valueOf(constant);
     }
 
-    private static String printDouble(double value) {
+    public static String printDouble(double value) {
         String text = String.valueOf(value);
         if (!text.contains("E")) {
             return text;

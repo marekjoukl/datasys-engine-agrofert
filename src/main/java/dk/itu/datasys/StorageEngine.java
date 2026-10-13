@@ -287,7 +287,7 @@ public final class StorageEngine {
         }
     }
 
-    private static long millisSince(long startedAt) {
+    static long millisSince(long startedAt) {
         return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
