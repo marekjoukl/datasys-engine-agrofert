@@ -2,11 +2,16 @@ package dk.itu.datasys.sql;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import dk.itu.datasys.ColumnSpec;
 import dk.itu.datasys.ColumnType;
@@ -98,19 +103,17 @@ class SqlParserTest {
 
     // 2. Literal typing
 
-    @Test
-    void wholeNumbersBecomeLong() {
-        assertEquals(12L, constantOf("SELECT * FROM t WHERE x = 12;"));
+    static Stream<Arguments> literals() {
+        return Stream.of(
+                arguments("12", 12L),
+                arguments("12.0", 12.0),
+                arguments("'12'", "12"));
     }
 
-    @Test
-    void numbersWithADecimalPointBecomeDouble() {
-        assertEquals(12.0, constantOf("SELECT * FROM t WHERE x = 12.0;"));
-    }
-
-    @Test
-    void quotedTextBecomesStringWithoutItsQuotes() {
-        assertEquals("12", constantOf("SELECT * FROM t WHERE x = '12';"));
+    @ParameterizedTest
+    @MethodSource("literals")
+    void literalTextBecomesTheRightJavaType(String literal, Object expected) {
+        assertEquals(expected, constantOf("SELECT * FROM t WHERE x = " + literal + ";"));
     }
 
     @Test
@@ -157,52 +160,23 @@ class SqlParserTest {
 
     // 4. Malformed input reports line and column
 
-    @Test
-    void aMissingSemicolonIsRejected() {
-        SqlParseException e = error("SELECT * FROM trips");
-
-        assertEquals(1, e.line());
-        assertEquals(19, e.column());
+    static Stream<Arguments> malformedStatements() {
+        return Stream.of(
+                arguments("SELECT * FROM trips", 19),
+                arguments("CREATE TABLE t (a STRING;", 24),
+                arguments("CREATE TABLE t (city TEXT);", 21),
+                arguments("SELECT * FROM t WHERE c = 'oops;", 26),
+                arguments("SELECT * trips;", 9),
+                arguments("SELECT * FROM trips; garbage", 21));
     }
 
-    @Test
-    void unbalancedParenthesesAreRejected() {
-        SqlParseException e = error("CREATE TABLE t (a STRING;");
+    @ParameterizedTest
+    @MethodSource("malformedStatements")
+    void malformedInputIsRejectedAtTheRightColumn(String sql, int column) {
+        SqlParseException e = error(sql);
 
         assertEquals(1, e.line());
-        assertEquals(24, e.column());
-    }
-
-    @Test
-    void anUnknownTypeNameIsRejected() {
-        SqlParseException e = error("CREATE TABLE t (city TEXT);");
-
-        assertEquals(1, e.line());
-        assertEquals(21, e.column());
-    }
-
-    @Test
-    void anUnterminatedStringLiteralIsRejected() {
-        SqlParseException e = error("SELECT * FROM t WHERE c = 'oops;");
-
-        assertEquals(1, e.line());
-        assertEquals(26, e.column());
-    }
-
-    @Test
-    void aMissingFromIsRejected() {
-        SqlParseException e = error("SELECT * trips;");
-
-        assertEquals(1, e.line());
-        assertEquals(9, e.column());
-    }
-
-    @Test
-    void trailingGarbageIsRejected() {
-        SqlParseException e = error("SELECT * FROM trips; garbage");
-
-        assertEquals(1, e.line());
-        assertEquals(21, e.column());
+        assertEquals(column, e.column());
     }
 
     @Test
