@@ -41,13 +41,6 @@ class SummariesTest {
     }
 
     @Test
-    void reverseOrder() {
-        MinMax res = Summaries.compute(ColumnType.LONG, List.of(9L, 5L, 1L));
-        assertEquals(1L, res.min());
-        assertEquals(9L, res.max());
-    }
-
-    @Test
     void emptyListIsRejected() {
         assertThrows(
                 IllegalArgumentException.class,

@@ -1,5 +1,6 @@
 package dk.itu.datasys;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -58,6 +59,10 @@ class CopyFileIT {
     void chunkOffsetsAreContiguousAfterTheHeader(@TempDir Path dir) throws Exception {
         List<PartitionMeta> partitions = copyGolden(dir, 2).partitions();
 
+        byte[] header = Files.readAllBytes(dir.resolve("trips").resolve("trips.data"));
+        assertArrayEquals(new byte[] {'A', 'G', 'R', 'O', 1, 0},
+                java.util.Arrays.copyOf(header, 6), "magic bytes and little-endian version 1");
+
         long expectedOffset = 6;
         for (PartitionMeta partition : partitions) {
             for (ColumnSpec column : TRIPS) {
@@ -72,19 +77,6 @@ class CopyFileIT {
                 "the chunks should account for the whole file");
     }
 
-    @Test
-    void dataFileStartsWithMagicBytesAndVersion(@TempDir Path dir) throws Exception {
-        copyGolden(dir, 2);
-
-        byte[] bytes = Files.readAllBytes(dir.resolve("trips").resolve("trips.data"));
-
-        assertEquals('A', bytes[0]);
-        assertEquals('G', bytes[1]);
-        assertEquals('R', bytes[2]);
-        assertEquals('O', bytes[3]);
-        assertEquals(1, bytes[4]);
-        assertEquals(0, bytes[5]);
-    }
 
     @Test
     void defaultPartitionSizeKeepsTheGoldenFileInOnePartition(@TempDir Path dir) {
