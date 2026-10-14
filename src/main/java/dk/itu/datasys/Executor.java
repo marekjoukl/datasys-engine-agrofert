@@ -76,12 +76,11 @@ public final class Executor {
                 }
                 case SelectStatement select -> {
                     Plan plan = planner.plan(select);
-                    List<Object[]> rows = plan.root().rows();
-                    rows.forEach(row -> out.println(toCsv(row)));
+                    int rowsOut = print(plan.root());
 
                     LOGGER.debug("statement=SELECT table={} rowsOut={} partitionsRead={}"
                             + " partitionsPruned={} durationMs={}",
-                            field(select.tableName()), rows.size(),
+                            field(select.tableName()), rowsOut,
                             plan.scanStats().partitionsRead(), plan.scanStats().partitionsPruned(),
                             millisSince(startedAt));
                 }
@@ -92,6 +91,20 @@ public final class Executor {
                     field(e.getMessage()), millisSince(startedAt));
             throw e;
         }
+    }
+
+    private int print(Operator root) {
+        int rowsOut = 0;
+        root.open();
+        try {
+            for (Object[] row = root.next(); row != null; row = root.next()) {
+                out.println(toCsv(row));
+                rowsOut++;
+            }
+        } finally {
+            root.close();
+        }
+        return rowsOut;
     }
 
     private static String toCsv(Object[] row) {
