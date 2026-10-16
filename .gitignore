@@ -45,3 +45,4 @@ data/
 
 # Maven shade plugin side effect
 dependency-reduced-pom.xml
+trips_big.csv
