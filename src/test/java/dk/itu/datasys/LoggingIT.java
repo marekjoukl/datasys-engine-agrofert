@@ -81,17 +81,50 @@ class LoggingIT {
                 messages(lines).toString());
     }
 
-    private static List<String> run(Path dir, String sql) throws Exception {
-        String sessionId = UUID.randomUUID().toString();
-        MDC.put("sessionId", sessionId);
-        MDC.put("statementNumber", "0");
+    @Test
+    void aFailingStatementLeavesAnErrorLineForItsOwnStatementNumber(@TempDir Path dir)
+            throws Exception {
+        String sessionId = startSession();
+        int status;
         try {
-            PrintStream rows = new PrintStream(OutputStream.nullOutputStream());
-            new Executor(new StorageEngine(dir, 2), rows).run(SETUP + sql);
+            status = Engine.run(new String[] {"-c", "SELECT * FROM nosuchtable"}, discard(), dir);
         } finally {
             MDC.clear();
         }
 
+        assertEquals(1, status);
+
+        List<String> errors = linesFor(sessionId).stream()
+                .filter(line -> line.split(",", 7)[4].equals("ERROR"))
+                .toList();
+
+        assertEquals(1, errors.size(), linesFor(sessionId).toString());
+        assertEquals("1", errors.get(0).split(",", 7)[2], errors.get(0));
+        assertTrue(errors.get(0).contains("message=unknown table: nosuchtable"), errors.get(0));
+    }
+
+    private static List<String> run(Path dir, String sql) throws Exception {
+        String sessionId = startSession();
+        try {
+            new Executor(new StorageEngine(dir, 2), discard()).run(SETUP + sql);
+        } finally {
+            MDC.clear();
+        }
+        return linesFor(sessionId);
+    }
+
+    private static String startSession() {
+        String sessionId = UUID.randomUUID().toString();
+        MDC.put("sessionId", sessionId);
+        MDC.put("statementNumber", "0");
+        return sessionId;
+    }
+
+    private static PrintStream discard() {
+        return new PrintStream(OutputStream.nullOutputStream());
+    }
+
+    private static List<String> linesFor(String sessionId) throws Exception {
         return Files.readAllLines(Path.of("logs/engine.log")).stream()
                 .filter(line -> line.contains(sessionId))
                 .toList();
