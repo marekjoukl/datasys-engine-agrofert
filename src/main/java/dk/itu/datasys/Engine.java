@@ -20,10 +20,10 @@ public final class Engine {
             %s engine
 
             usage:
-              engine                     print this message
-              engine -c "<sql>"          run one statement
-              engine "<sql>"             same as -c
-              engine -f <script.sql>     run every statement in the file
+              ./engine                     print this message
+              ./engine -c "<sql>"          run one statement
+              ./engine "<sql>"             same as -c
+              ./engine -f <script.sql>     run every statement in the file
 
             Rows are printed to stdout as headerless CSV. Logs and errors go to stderr.
             Tables live under %s/ in the working directory.""".formatted(TEAM,
