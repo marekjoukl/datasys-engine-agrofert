@@ -13,14 +13,10 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import dk.itu.datasys.sql.Predicate;
-import dk.itu.datasys.sql.SelectStatement;
 
 public final class StorageEngine {
 
@@ -30,7 +26,6 @@ public final class StorageEngine {
 
     private final Path dataDirectory;
     private final int maxRowsPerPartition;
-    private ScanStats lastScanStats;
 
     public StorageEngine(Path dataDirectory) {
         this(dataDirectory, DEFAULT_MAX_ROWS_PER_PARTITION);
@@ -198,38 +193,6 @@ public final class StorageEngine {
         return partitions;
     }
 
-    public List<Object[]> select(String tableName, String columnName,
-                                 Comparison comparison, Object constant) {
-        TableCatalog catalog = requireCatalog(tableName);
-        List<ColumnSpec> columns = catalog.columns();
-        int columnIndex = columnIndex(columns, columnName);
-        ColumnSpec column = columns.get(columnIndex);
-        if (comparison == null) {
-            throw new IllegalArgumentException("comparison is required");
-        }
-        requireMatchingConstant(column, constant);
-
-        long startedAt = System.nanoTime();
-        Plan plan = new Planner(this).plan(new SelectStatement(tableName,
-                Optional.of(new Predicate(columnName, comparison, constant))));
-        lastScanStats = plan.scanStats();
-
-        List<Object[]> rows = plan.root().rows();
-
-        LOGGER.debug(
-                "table={} column={} comparison={} const={} partitionsTotal={} partitionsRead={}"
-                + " partitionsPruned={} rowsOut={} durationMs={}",
-                field(tableName), field(columnName), comparison, field(constant),
-                lastScanStats.partitionsTotal(), lastScanStats.partitionsRead(),
-                lastScanStats.partitionsPruned(), rows.size(), millisSince(startedAt));
-
-        return rows;
-    }
-
-    public ScanStats lastScanStats() {
-        return lastScanStats;
-    }
-
     public List<Object[]> readPartitionRows(String tableName, int partitionNumber) {
         TableCatalog catalog = requireCatalog(tableName);
         List<ColumnSpec> columns = catalog.columns();
@@ -270,21 +233,6 @@ public final class StorageEngine {
             }
         }
         throw new IllegalArgumentException("unknown column: " + columnName);
-    }
-
-    private static void requireMatchingConstant(ColumnSpec column, Object constant) {
-        Class<?> expected = switch (column.type()) {
-            case STRING -> String.class;
-            case LONG -> Long.class;
-            case DOUBLE -> Double.class;
-        };
-
-        if (constant == null || constant.getClass() != expected) {
-            throw new IllegalArgumentException(
-                    "column " + column.name() + " is " + column.type()
-                    + " so the constant must be " + expected.getSimpleName()
-                    + " but was " + (constant == null ? "null" : constant.getClass().getSimpleName()));
-        }
     }
 
     static long millisSince(long startedAt) {
