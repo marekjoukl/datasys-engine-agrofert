@@ -42,3 +42,6 @@ data/
 .metals/
 .bloop/
 .bsp/
+
+# Maven shade plugin side effect
+dependency-reduced-pom.xml
