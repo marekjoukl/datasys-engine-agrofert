@@ -105,9 +105,9 @@ public final class StorageEngine {
                 new TableCatalog(tableName, catalog.columns(), true, partitions),
                 catalogFile(tableName));
 
-        LOGGER.debug("table={} file={} rows={} partitions={} durationMs={}",
+        LOGGER.debug("table={} file={} rows={} maxRowsPerPartition={} partitions={} durationMs={}",
                 field(tableName), field(Path.of(csvFilePath).getFileName()),
-                rows.size(), partitions.size(), millisSince(startedAt));
+                rows.size(), maxRowsPerPartition, partitions.size(), millisSince(startedAt));
     }
 
     private static List<Object[]> readCsv (String csvFilePath, List<ColumnSpec> columns) {
