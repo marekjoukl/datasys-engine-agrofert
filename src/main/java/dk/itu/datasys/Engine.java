@@ -1,5 +1,7 @@
 package dk.itu.datasys;
 
+import static dk.itu.datasys.StorageEngine.field;
+
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
@@ -43,22 +45,38 @@ public final class Engine {
     static int run(String[] args, PrintStream out, Path dataDirectory) {
         LoggingContext.initialise();
         LOGGER.debug("engine started args={}", args.length);
-
-        int status = 0;
-        try {
-            String sql = sqlFrom(args);
-            if (sql == null) {
-                out.println(USAGE);
-            } else {
-                new Executor(storageEngine(dataDirectory), out).run(sql);
-            }
-        } catch (RuntimeException e) {
-            System.err.println(message(e));
-            status = 1;
-        }
-
+        int status = execute(args, out, dataDirectory);
         LOGGER.debug("engine stopped status={}", status);
         return status;
+    }
+
+    private static int execute(String[] args, PrintStream out, Path dataDirectory) {
+        String sql;
+        Executor executor;
+        try {
+            sql = sqlFrom(args);
+            if (sql == null) {
+                out.println(USAGE);
+                return 0;
+            }
+            executor = new Executor(storageEngine(dataDirectory), out);
+        } catch (RuntimeException e) {
+            LOGGER.error("front door failed error={} message={}",
+                    e.getClass().getSimpleName(), field(message(e)));
+            return failed(e);
+        }
+
+        try {
+            executor.run(sql);
+            return 0;
+        } catch (RuntimeException e) {
+            return failed(e);
+        }
+    }
+
+    private static int failed(RuntimeException e) {
+        System.err.println(message(e));
+        return 1;
     }
 
     private static StorageEngine storageEngine(Path dataDirectory) {
