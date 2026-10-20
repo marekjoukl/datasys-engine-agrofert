@@ -71,6 +71,20 @@ class LoggingIT {
     }
 
     @Test
+    void theSelectSummaryLineTimesTheQueryWithoutTheOutput(@TempDir Path dir) throws Exception {
+        List<String> lines = run(dir, LONG_TRIPS);
+
+        String summary = messages(lines).stream()
+                .filter(m -> m.startsWith("statement=SELECT"))
+                .findFirst()
+                .orElseThrow();
+
+        long queryMs = valueOf(summary, "queryMs");
+        long durationMs = valueOf(summary, "durationMs");
+        assertTrue(queryMs >= 0 && queryMs <= durationMs, summary);
+    }
+
+    @Test
     void aConstantContainingACommaCannotBreakTheLineFormat(@TempDir Path dir) throws Exception {
         List<String> lines = run(dir, "SELECT * FROM trips WHERE city = 'Vejle,Odense';");
 
@@ -132,5 +146,14 @@ class LoggingIT {
 
     private static List<String> messages(List<String> lines) {
         return lines.stream().map(line -> line.split(",", 7)[6]).toList();
+    }
+
+    private static long valueOf(String message, String key) {
+        for (String pair : message.split(" ")) {
+            if (pair.startsWith(key + "=")) {
+                return Long.parseLong(pair.substring(key.length() + 1));
+            }
+        }
+        throw new AssertionError("no " + key + " in " + message);
     }
 }

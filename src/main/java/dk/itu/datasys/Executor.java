@@ -76,13 +76,13 @@ public final class Executor {
                 }
                 case SelectStatement select -> {
                     Plan plan = planner.plan(select);
-                    int rowsOut = print(plan.root());
+                    Output output = print(plan.root());
 
                     LOGGER.debug("statement=SELECT table={} rowsOut={} partitionsRead={}"
-                            + " partitionsPruned={} durationMs={}",
-                            field(select.tableName()), rowsOut,
+                            + " partitionsPruned={} queryMs={} durationMs={}",
+                            field(select.tableName()), output.rowsOut(),
                             plan.scanStats().partitionsRead(), plan.scanStats().partitionsPruned(),
-                            millisSince(startedAt));
+                            millisSince(startedAt + output.writeNanos()), millisSince(startedAt));
                 }
             }
         } catch (RuntimeException e) {
@@ -93,18 +93,23 @@ public final class Executor {
         }
     }
 
-    private int print(Operator root) {
+    private record Output(int rowsOut, long writeNanos) { }
+
+    private Output print(Operator root) {
         int rowsOut = 0;
+        long writeNanos = 0;
         root.open();
         try {
             for (Object[] row = root.next(); row != null; row = root.next()) {
+                long writeStartedAt = System.nanoTime();
                 out.println(toCsv(row));
+                writeNanos += System.nanoTime() - writeStartedAt;
                 rowsOut++;
             }
         } finally {
             root.close();
         }
-        return rowsOut;
+        return new Output(rowsOut, writeNanos);
     }
 
     private static String toCsv(Object[] row) {
