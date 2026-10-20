@@ -117,6 +117,56 @@ class LoggingIT {
         assertTrue(errors.get(0).contains("message=unknown table: nosuchtable"), errors.get(0));
     }
 
+    @Test
+    void anUnknownOptionLeavesOneErrorLineOutsideAnyStatement(@TempDir Path dir) throws Exception {
+        List<String> errors = frontDoorErrors(dir, "-x", "whatever");
+
+        assertEquals(1, errors.size(), errors.toString());
+        assertEquals("0", errors.get(0).split(",", 7)[2], errors.get(0));
+        assertTrue(errors.get(0).contains("message=unknown option: -x"), errors.get(0));
+    }
+
+    @Test
+    void anUnreadableScriptLeavesOneErrorLine(@TempDir Path dir) throws Exception {
+        List<String> errors = frontDoorErrors(dir, "-f", dir.resolve("missing.sql").toString());
+
+        assertEquals(1, errors.size(), errors.toString());
+        assertTrue(errors.get(0).contains("message=cannot read script"), errors.get(0));
+    }
+
+    @Test
+    void aMalformedPartitionSizeLeavesOneErrorLine(@TempDir Path dir) throws Exception {
+        System.setProperty("engine.maxRowsPerPartition", "lots");
+        List<String> errors;
+        try {
+            errors = frontDoorErrors(dir, "-c", "SELECT * FROM trips");
+        } finally {
+            System.clearProperty("engine.maxRowsPerPartition");
+        }
+
+        assertEquals(1, errors.size(), errors.toString());
+        assertTrue(errors.get(0).contains("message=engine.maxRowsPerPartition must be a whole number"),
+                errors.get(0));
+    }
+
+    private static List<String> frontDoorErrors(Path dir, String... args) throws Exception {
+        String sessionId = startSession();
+        PrintStream originalErr = System.err;
+        int status;
+        try {
+            System.setErr(discard());
+            status = Engine.run(args, discard(), dir);
+        } finally {
+            System.setErr(originalErr);
+            MDC.clear();
+        }
+
+        assertEquals(1, status);
+        return linesFor(sessionId).stream()
+                .filter(line -> line.split(",", 7)[4].equals("ERROR"))
+                .toList();
+    }
+
     private static List<String> run(Path dir, String sql) throws Exception {
         String sessionId = startSession();
         try {
