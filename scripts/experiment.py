@@ -1,10 +1,11 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = ["matplotlib>=3.8"]
 # ///
 
 import argparse
 import csv
+import math
 import os
 import platform
 import random
@@ -45,6 +46,9 @@ def main():
     analyze_parser = commands.add_parser("analyze", help="summarize experiment/<label> into results.csv and runs.csv")
     analyze_parser.add_argument("label")
 
+    plot_parser = commands.add_parser("plot", help="draw the figures of experiment/<label> from results.csv")
+    plot_parser.add_argument("label")
+
     generate_parser = commands.add_parser("generate", help="write a trips CSV to stdout: city,distance,price")
     generate_parser.add_argument("rows", type=int, nargs="?", default=5000)
     generate_parser.add_argument("order", choices=ORDERS, nargs="?", default="sorted")
@@ -57,6 +61,8 @@ def main():
         run(args)
     elif args.command == "analyze":
         analyze(args.label)
+    elif args.command == "plot":
+        plot(args.label)
     else:
         sys.stdout.writelines(generate_trips(args.rows, args.order, args.seed))
 
@@ -127,16 +133,19 @@ def analyze(label):
     analysis.mkdir()
 
     configurations = []
-    for log in sorted(experiment.glob("*/logs/engine.log")):
-        name = log.parent.parent.name
+    for logs in sorted(experiment.glob("*/logs")):
+        name = logs.parent.name
         if name == "analysis":
             continue
         order, size = name.rsplit("-", 1)
         table = f"log_{order}_{size}"
 
+        snapshot = analysis / f"{name}.log"
+        write_snapshot(logs, snapshot)
+
         script = analysis / f"{name}.sql"
         script.write_text(f"CREATE TABLE {table} ({LOG_COLUMNS});\n"
-                          f"COPY {table} FROM '../{name}/logs/engine.log';\n"
+                          f"COPY {table} FROM '{snapshot.name}';\n"
                           f"SELECT * FROM {table} WHERE className = 'Executor';\n")
 
         filtered = analysis / f"{name}.csv"
@@ -148,6 +157,17 @@ def analyze(label):
     write_runs(experiment / "runs.csv", configurations)
     write_results(experiment / "results.csv", configurations)
     print(f"results in {experiment / 'results.csv'} and {experiment / 'runs.csv'}")
+
+
+def write_snapshot(logs, snapshot):
+    rotated = sorted(logs.glob("engine-*.log"), key=lambda path: int(path.stem.split("-")[1]))
+    lines = []
+    for path in [*rotated, logs / "engine.log"]:
+        lines.extend(path.read_text().splitlines(keepends=True))
+    timestamps = [line[:23] for line in lines]
+    if timestamps != sorted(timestamps):
+        sys.exit(f"{logs}: the log files are not in time order")
+    snapshot.write_text("".join(lines))
 
 
 def read_configuration(order, size, filtered):
@@ -204,6 +224,76 @@ def write_results(path, configurations):
 def statistics_of(first, rest, key):
     values = [int(select[key]) for select in rest]
     return [first[key], statistics.median(values), min(values), max(values)]
+
+
+def plot(label):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import FuncFormatter, NullLocator, PercentFormatter
+
+    experiment = EXPERIMENTS / label
+    results_path = experiment / "results.csv"
+    if not results_path.exists():
+        sys.exit(f"{results_path} does not exist: run analyze first")
+    with results_path.open(newline="") as file:
+        results = list(csv.DictReader(file))
+
+    plt.rcParams.update({"font.size": 11})
+    styles = {
+        "sorted": {"color": "tab:blue", "marker": "o", "linestyle": "-"},
+        "shuffled": {"color": "tab:orange", "marker": "s", "linestyle": "--"},
+    }
+    sizes = sorted({int(result["maxRowsPerPartition"]) for result in results})
+
+    def size_axis(axes):
+        axes.set_xscale("log", base=2)
+        axes.set_xticks(sizes, [str(size) for size in sizes], rotation=45)
+        axes.xaxis.set_minor_locator(NullLocator())
+        axes.set_xlabel("maxRowsPerPartition (rows, log scale)")
+
+    def by_order(order):
+        return [result for result in results if result["order"] == order]
+
+    def save(figure, path):
+        figure.tight_layout()
+        figure.savefig(path.with_suffix(".pdf"))
+        figure.savefig(path.with_suffix(".png"), dpi=200)
+        plt.close(figure)
+
+    figure, axes = plt.subplots(figsize=(6.4, 3.8))
+    for order in ORDERS:
+        rows = by_order(order)
+        if rows:
+            axes.plot([int(row["maxRowsPerPartition"]) for row in rows],
+                      [float(row["fractionRead"]) for row in rows], label=order, **styles[order])
+    axes.axhline(0.1, color="grey", linestyle=":", label="rows matching (10%)")
+    size_axis(axes)
+    axes.set_ylim(0, 1.05)
+    axes.yaxis.set_major_formatter(PercentFormatter(1.0))
+    axes.set_ylabel("partitions read (% of all)")
+    axes.legend()
+    save(figure, experiment / "figure-1-partitions-read")
+
+    figure, axes = plt.subplots(figsize=(6.4, 3.8))
+    for order in ORDERS:
+        rows = by_order(order)
+        if rows:
+            medians = [float(row["medianQueryMs"]) for row in rows]
+            axes.errorbar([int(row["maxRowsPerPartition"]) for row in rows], medians,
+                          yerr=[[median - float(row["minQueryMs"]) for median, row in zip(medians, rows)],
+                                [float(row["maxQueryMs"]) - median for median, row in zip(medians, rows)]],
+                          capsize=3, label=order, **styles[order])
+    size_axis(axes)
+    axes.set_yscale("log")
+    lowest = min(float(row["minQueryMs"]) for row in results)
+    axes.set_ylim(bottom=10 ** math.floor(math.log10(lowest)))
+    axes.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:,.0f}"))
+    axes.set_ylabel("query time, queryMs (ms, log scale)")
+    axes.legend()
+    save(figure, experiment / "figure-2-query-time")
+
+    print(f"figures in {experiment}")
 
 
 def partitions_total(select):
