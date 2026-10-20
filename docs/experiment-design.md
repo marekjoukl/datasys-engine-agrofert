@@ -6,23 +6,42 @@ This experiment should answer how partition size affects pruning and performance
 
 **Question:** how does `maxRowsPerPartition` affect how much of a table the planner can skip for a fixed selective query, and does the answer depend on whether the input was sorted on the predicate column? It should also justify whether the default `1024` size was a good choice.
 
-**x axis:** `maxRowsPerPartition` at 8, 32, 128, 512, 2048, 8192, 32768 (log scale) + 1024 (as the default value)
+**x axis:** `maxRowsPerPartition` at 8, 32, 128, 512, 1024 (the default), 2048, 8192, 32768, on a log scale.
 
 ## Metric and y axis
 
-**y axis:** fraction of partitions read, as `partitionsRead / (partitionsRead + partitionsPruned)` from the executor's own `statement=SELECT` summary line + `durationMs` for the actual speed of the statement.
+All numbers come from the engine's own log, from the executor's `statement=SELECT` summary line:
+
+```
+statement=SELECT table=trips rowsOut=10000 partitionsRead=11 partitionsPruned=87 queryMs=144 durationMs=185
+```
+
+- **Fraction of partitions read:** `partitionsRead / (partitionsRead + partitionsPruned)`. Deterministic, identical in every run.
+- **Query time:** `queryMs`, the statement's time without writing the result rows to stdout (bind, plan, scan, filter). `durationMs`, which also includes writing the rows, is recorded as a secondary number.
+
+**Figures**, stated before the first run:
+
+- **Figure 1:** x = `maxRowsPerPartition` (log scale), y = fraction of partitions read (0 to 1). One curve per input order: sorted and shuffled.
+- **Figure 2:** x = `maxRowsPerPartition` (log scale), y = `queryMs` (ms, log scale). One curve per input order. Each point is the median of runs 2 to 6; whiskers show their min and max.
 
 ## Procedure
 
-1. 100,000 rows from `uv run scripts/experiment.py generate` (sorted and unsorted), which takes a row count and `sorted|shuffled` and uses a fixed seed.
+1. **Data:** 100,000 rows from `uv run scripts/experiment.py generate`, sorted and shuffled, seed 69. `distance` runs 1 to 100,000, so the sorted file has tight, disjoint per-partition ranges on `distance`.
+2. **Query:** `SELECT * FROM trips WHERE distance > 90000`, matching 10,000 of 100,000 rows. Selectivity is fixed at 0.10 so only the x axis and the input order vary.
+3. **Sweep:** `uv run scripts/experiment.py run`. For each order and partition size, a fresh data directory and log: `CREATE TABLE`, `COPY` with `-Dengine.maxRowsPerPartition=<size>`, then 6 runs of the query.
+4. **Runs:** every run is a fresh `./engine` process, so every run starts with a cold JVM. All 6 runs are kept; run 1 is reported apart as the first run, the median and min to max are taken over runs 2 to 6. Every run must return exactly 10,000 rows, or the sweep stops.
+5. **Heap:** pinned with `-Xms1g -Xmx1g`.
+6. **Analysis:** `uv run scripts/experiment.py analyze <label>`. Our engine `COPY`s each configuration's log and filters the executor lines (`WHERE className = 'Executor'`). A Python script then parses the `key=value` pairs and computes the median, min and max, since our SQL has no aggregation. Every run is kept in `runs.csv`, the summary per configuration in `results.csv`, the `COPY` time included.
+7. **Conditions:** recorded automatically in `conditions.txt` per sweep: date, commit, uncommitted changes, OS, CPU, memory, Java version, heap, rows, seed.
 
-2. **Query:** `SELECT * FROM trips WHERE distance > 90000`, matching 10,000 of 100,000 rows. Selectivity is fixed at 0.10 so only the x axis varies.
+## Machines
 
-3. Repeat for truthful duration measurements - 1 warmup run + 5 measured runs (fraction of partitions is always deterministic).
+| Machine | CPU, memory | OS | Java |
+|---|---|---|---|
+| Laptop | Intel Core i5-1135G7, 16 GB | Arch Linux, kernel 7.2.11-arch1-1 | Temurin JDK 25.0.4.1 |
+| MacBook Pro | Apple M5 | macOS 27 | Java 26.0.1 |
 
-4. Read the results by dogfooding the logs (COPY into new table and query it)
-
-5. Measured on Macbook Pro M5 (MacOs 27), Java 26.0.1,
+Both machines run the same sweep at the same commit.
 
 ## Hypothesis
 
