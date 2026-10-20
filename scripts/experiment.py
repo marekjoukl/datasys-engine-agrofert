@@ -7,6 +7,7 @@ import argparse
 import csv
 import os
 import platform
+import random
 import shutil
 import statistics
 import subprocess
@@ -18,8 +19,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EXPERIMENTS = REPO / "experiment"
 ENGINE = REPO / "engine"
-GENERATOR = REPO / "scripts" / "gen-trips.sh"
 
+CITIES = ["Copenhagen", "Aarhus", "Odense", "Aalborg", "Esbjerg", "Roskilde"]
+DEFAULT_SEED = 69
 DEFAULT_SIZES = [8, 32, 128, 512, 1024, 2048, 8192, 32768]
 ORDERS = ["sorted", "shuffled"]
 LOG_COLUMNS = ("timestamp STRING, sessionId STRING, statementNumber LONG, threadId LONG, "
@@ -38,17 +40,36 @@ def main():
     run_parser.add_argument("--runs", type=int, default=6, help="SELECT runs per configuration, at least 2")
     run_parser.add_argument("--heap", default="1g", help="passed to the engine as -Xms and -Xmx")
     run_parser.add_argument("--label", help="directory name under experiment/, defaults to the short commit hash")
+    run_parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
 
     analyze_parser = commands.add_parser("analyze", help="summarize experiment/<label> into results.csv and runs.csv")
     analyze_parser.add_argument("label")
+
+    generate_parser = commands.add_parser("generate", help="write a trips CSV to stdout: city,distance,price")
+    generate_parser.add_argument("rows", type=int, nargs="?", default=5000)
+    generate_parser.add_argument("order", choices=ORDERS, nargs="?", default="sorted")
+    generate_parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
 
     args = parser.parse_args()
     if args.command == "run":
         if args.runs < 2:
             parser.error("--runs must be at least 2: run 1 is reported apart from the rest")
         run(args)
-    else:
+    elif args.command == "analyze":
         analyze(args.label)
+    else:
+        sys.stdout.writelines(generate_trips(args.rows, args.order, args.seed))
+
+
+def generate_trips(rows, order, seed):
+    generator = random.Random(seed)
+    lines = [f"{CITIES[int(generator.random() * len(CITIES))]},{distance},{distance * 1.5:.2f}\n"
+             for distance in range(1, rows + 1)]
+    if order == "shuffled":
+        for i in range(len(lines) - 1, 0, -1):
+            j = int(generator.random() * (i + 1))
+            lines[i], lines[j] = lines[j], lines[i]
+    return lines
 
 
 def run(args):
@@ -71,7 +92,7 @@ def run(args):
     for order in args.orders:
         data = out / f"trips-{order}.csv"
         with data.open("w") as file:
-            subprocess.run([str(GENERATOR), str(args.rows), order], stdout=file, check=True)
+            file.writelines(generate_trips(args.rows, order, args.seed))
 
         for size in args.sizes:
             directory = out / f"{order}-{size}"
@@ -208,6 +229,7 @@ def write_conditions(out, args, query, expected):
         "java": java_version(),
         "heap": args.heap,
         "rows": args.rows,
+        "seed": args.seed,
         "orders": " ".join(args.orders),
         "sizes": " ".join(str(size) for size in args.sizes),
         "runs": args.runs,

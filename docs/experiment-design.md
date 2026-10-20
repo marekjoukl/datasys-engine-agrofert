@@ -14,7 +14,7 @@ This experiment should answer how partition size affects pruning and performance
 
 ## Procedure
 
-1. 100,000 rows from `scripts/gen-trips.sh` (sorted and unsorted), which takes a row count and `sorted|shuffled` and uses a fixed seed.
+1. 100,000 rows from `uv run scripts/experiment.py generate` (sorted and unsorted), which takes a row count and `sorted|shuffled` and uses a fixed seed.
 
 2. **Query:** `SELECT * FROM trips WHERE distance > 90000`, matching 10,000 of 100,000 rows. Selectivity is fixed at 0.10 so only the x axis varies.
 

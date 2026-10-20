@@ -1,6 +1,6 @@
 -- Generates a log worth reading: 5 partitions and a spread of pruning outcomes.
 -- Run with a clean data directory, createTable rejects a table that already exists:
---   ./scripts/gen-trips.sh > trips_big.csv
+--   uv run scripts/experiment.py generate > trips_big.csv
 --   rm -rf data logs
 --   ./engine -f scripts/workload.sql > /dev/null
 -- Keep failing statements out of this file; the executor stops at the first error.

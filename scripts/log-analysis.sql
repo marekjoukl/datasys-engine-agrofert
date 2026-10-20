@@ -1,5 +1,5 @@
 -- The engine reading its own log. Prerequisites:
---   ./scripts/gen-trips.sh > trips_big.csv
+--   uv run scripts/experiment.py generate > trips_big.csv
 --   rm -rf data logs
 --   ./engine -f scripts/workload.sql > /dev/null
 --   ./engine -c "SELECT * FROM nosuchtable"       -- leaves the ERROR line
