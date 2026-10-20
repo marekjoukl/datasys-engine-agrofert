@@ -42,6 +42,8 @@ def main():
     run_parser.add_argument("--heap", default="1g", help="passed to the engine as -Xms and -Xmx")
     run_parser.add_argument("--label", help="directory name under experiment/, defaults to the short commit hash")
     run_parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    run_parser.add_argument("--cooldown", type=int, default=20,
+                            help="seconds of idle time before each configuration")
 
     analyze_parser = commands.add_parser("analyze", help="summarize experiment/<label> into results.csv and runs.csv")
     analyze_parser.add_argument("label")
@@ -96,11 +98,13 @@ def run(args):
     write_conditions(out, args, query, expected)
 
     for order in args.orders:
-        data = out / f"trips-{order}.csv"
-        with data.open("w") as file:
+        with (out / f"trips-{order}.csv").open("w") as file:
             file.writelines(generate_trips(args.rows, order, args.seed))
 
-        for size in args.sizes:
+    for size in sorted(args.sizes, reverse=True):
+        for order in args.orders:
+            time.sleep(args.cooldown)
+            data = out / f"trips-{order}.csv"
             directory = out / f"{order}-{size}"
             directory.mkdir()
             options = [f"-Xms{args.heap}", f"-Xmx{args.heap}", f"-Dengine.maxRowsPerPartition={size}"]
@@ -120,12 +124,13 @@ def run(args):
                 print(f"{order} size={size} run={number}/{args.runs} rows={returned} "
                       f"wallSeconds={time.monotonic() - started:.1f}", flush=True)
 
+    (out / "finished.txt").write_text(f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
     print(f"results in {out}")
 
 
 def analyze(label):
     experiment = EXPERIMENTS / label
-    if not (experiment / "conditions.txt").exists():
+    if not (experiment / "finished.txt").exists():
         sys.exit(f"{experiment} is not a finished sweep")
 
     analysis = experiment / "analysis"
@@ -323,6 +328,8 @@ def write_conditions(out, args, query, expected):
         "orders": " ".join(args.orders),
         "sizes": " ".join(str(size) for size in args.sizes),
         "runs": args.runs,
+        "configurationOrder": "sizes largest first, orders interleaved per size",
+        "cooldownSeconds": args.cooldown,
         "query": query,
         "expectedRows": expected,
     }
