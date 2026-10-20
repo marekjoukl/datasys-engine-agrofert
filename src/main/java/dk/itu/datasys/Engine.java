@@ -15,6 +15,7 @@ public final class Engine {
 
     private static final String TEAM = "agrofert";
     private static final Path DEFAULT_DATA_DIRECTORY = Path.of("data");
+    private static final String MAX_ROWS_PER_PARTITION = "engine.maxRowsPerPartition";
 
     private static final String USAGE = """
             %s engine
@@ -26,8 +27,10 @@ public final class Engine {
               ./engine -f <script.sql>     run every statement in the file
 
             Rows are printed to stdout as headerless CSV. Logs and errors go to stderr.
-            Tables live under %s/ in the working directory.""".formatted(TEAM,
-            DEFAULT_DATA_DIRECTORY);
+            Tables live under %s/ in the working directory.
+            COPY splits rows into partitions of at most -D%s=<n> rows,
+            e.g. ENGINE_JAVA_OPTS=-D%s=128 ./engine -f load.sql""".formatted(TEAM,
+            DEFAULT_DATA_DIRECTORY, MAX_ROWS_PER_PARTITION, MAX_ROWS_PER_PARTITION);
 
     public static void main(String[] args) {
         System.exit(run(args, System.out));
@@ -47,7 +50,7 @@ public final class Engine {
             if (sql == null) {
                 out.println(USAGE);
             } else {
-                new Executor(new StorageEngine(dataDirectory), out).run(sql);
+                new Executor(storageEngine(dataDirectory), out).run(sql);
             }
         } catch (RuntimeException e) {
             System.err.println(message(e));
@@ -56,6 +59,19 @@ public final class Engine {
 
         LOGGER.debug("engine stopped status={}", status);
         return status;
+    }
+
+    private static StorageEngine storageEngine(Path dataDirectory) {
+        String maxRowsPerPartition = System.getProperty(MAX_ROWS_PER_PARTITION);
+        if (maxRowsPerPartition == null) {
+            return new StorageEngine(dataDirectory);
+        }
+        try {
+            return new StorageEngine(dataDirectory, Integer.parseInt(maxRowsPerPartition));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(MAX_ROWS_PER_PARTITION
+                    + " must be a whole number but was " + maxRowsPerPartition, e);
+        }
     }
 
     private static String sqlFrom(String[] args) {

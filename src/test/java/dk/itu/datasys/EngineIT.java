@@ -10,6 +10,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -103,6 +104,49 @@ class EngineIT {
         assertEquals(1, result.status());
         assertEquals("", result.out());
         assertTrue(result.err().contains("unknown option: -x"), result.err());
+    }
+
+    @Test
+    void thePartitionSizeComesFromASystemProperty(@TempDir Path dir) {
+        Result result = withMaxRowsPerPartition("2", () -> run(dir, "-f", script(dir, SETUP)));
+
+        assertEquals(0, result.status(), result.err());
+        assertEquals(4, new StorageEngine(dir).partitionCount("trips"));
+    }
+
+    @Test
+    void withoutThePropertyTheDefaultPartitionSizeApplies(@TempDir Path dir) {
+        Result result = run(dir, "-f", script(dir, SETUP));
+
+        assertEquals(0, result.status(), result.err());
+        assertEquals(1, new StorageEngine(dir).partitionCount("trips"));
+    }
+
+    @Test
+    void aMalformedPartitionSizeExitsOne(@TempDir Path dir) {
+        Result result = withMaxRowsPerPartition("lots", () -> run(dir, "-f", script(dir, SETUP)));
+
+        assertEquals(1, result.status());
+        assertEquals("", result.out());
+        assertTrue(result.err().contains("engine.maxRowsPerPartition must be a whole number but was lots"),
+                result.err());
+    }
+
+    @Test
+    void aPartitionSizeBelowOneExitsOne(@TempDir Path dir) {
+        Result result = withMaxRowsPerPartition("0", () -> run(dir, "-f", script(dir, SETUP)));
+
+        assertEquals(1, result.status());
+        assertTrue(result.err().contains("maxRowsPerPartition must be positive but was 0"), result.err());
+    }
+
+    private static Result withMaxRowsPerPartition(String value, Supplier<Result> body) {
+        System.setProperty("engine.maxRowsPerPartition", value);
+        try {
+            return body.get();
+        } finally {
+            System.clearProperty("engine.maxRowsPerPartition");
+        }
     }
 
     private static Result run(Path dataDirectory, String... args) {
