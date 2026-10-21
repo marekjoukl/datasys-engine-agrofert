@@ -1,0 +1,17 @@
+date=2026-10-21T08:23:39Z
+commit=12e77e9acfbd28983d694a73d76395264008b394
+uncommittedChanges=no
+os=Darwin 27.0.0 arm64
+cpu=Apple M5
+memoryBytes=17179869184
+java=openjdk version "26.0.1" 2026-04-21
+heap=1g
+rows=100000
+seed=69
+orders=sorted shuffled
+sizes=8 32 128 512 1024 2048 8192 32768
+runs=6
+configurationOrder=sizes largest first, orders interleaved per size
+cooldownSeconds=20
+query=SELECT * FROM trips WHERE distance > 90000
+expectedRows=10000
