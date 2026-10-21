@@ -1,0 +1,17 @@
+date=2026-10-21T08:51:52Z
+commit=12e77e9acfbd28983d694a73d76395264008b394
+uncommittedChanges=no
+os=Linux 7.2.11-arch1-1 x86_64
+cpu=11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+memoryBytes=16492249088
+java=openjdk version "25.0.4.1" 2026-08-18 LTS
+heap=1g
+rows=100000
+seed=69
+orders=sorted shuffled
+sizes=8 32 128 512 1024 2048 8192 32768
+runs=6
+configurationOrder=sizes largest first, orders interleaved per size
+cooldownSeconds=20
+query=SELECT * FROM trips WHERE distance > 90000
+expectedRows=10000
