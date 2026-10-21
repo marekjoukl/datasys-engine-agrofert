@@ -43,6 +43,18 @@ statement=SELECT table=trips rowsOut=10000 partitionsRead=11 partitionsPruned=87
 
 Both machines run the same sweep at the same commit.
 
+## How to run
+
+Needs JDK 25+, Maven and uv.
+
+```bash
+uv run scripts/experiment.py run
+uv run scripts/experiment.py analyze <label>
+uv run scripts/experiment.py plot <label>
+```
+
+`<label>` is the short git commit hash the sweep ran at. Get it with `git rev-parse --short HEAD`, or from the last line `run` prints. Results and figures end up in `experiment/<label>/`.
+
 ## Hypothesis
 
 The ordering has a big effect on the performance.
