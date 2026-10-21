@@ -38,7 +38,7 @@ statement=SELECT table=trips rowsOut=10000 partitionsRead=11 partitionsPruned=87
 
 | Machine | CPU, memory | OS | Java |
 |---|---|---|---|
-| Laptop | Intel Core i5-1135G7, 16 GB | Arch Linux, kernel 7.2.11-arch1-1 | Temurin JDK 25.0.4.1 |
+| Latitude 5320 | Intel Core i5-1135G7, 16 GB | Arch Linux, kernel 7.2.11-arch1-1 | Temurin JDK 25.0.4.1 |
 | MacBook Pro | Apple M5 | macOS 27 | Java 26.0.1 |
 
 Both machines run the same sweep at the same commit.
