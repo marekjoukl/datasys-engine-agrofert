@@ -246,16 +246,21 @@ def plot(label):
 
     plt.rcParams.update({"font.size": 11})
     styles = {
-        "sorted": {"color": "tab:blue", "marker": "o", "linestyle": "-"},
-        "shuffled": {"color": "tab:orange", "marker": "s", "linestyle": "--"},
+        "sorted": {"color": "#6a9fd8", "marker": "o", "linestyle": "-"},
+        "shuffled": {"color": "#e88bb5", "marker": "s", "linestyle": "--"},
     }
     sizes = sorted({int(result["maxRowsPerPartition"]) for result in results})
 
+    def size_label(size):
+        return f"{size // 1024}K" if size >= 1024 and size % 1024 == 0 else str(size)
+
     def size_axis(axes):
         axes.set_xscale("log", base=2)
-        axes.set_xticks(sizes, [str(size) for size in sizes], rotation=45)
+        axes.set_xticks(sizes, [size_label(size) for size in sizes])
         axes.xaxis.set_minor_locator(NullLocator())
-        axes.set_xlabel("maxRowsPerPartition (rows, log scale)")
+        axes.set_xlabel("maxRowsPerPartition (rows, log scale, K = 1024)")
+        axes.grid(color="0.9")
+        axes.set_axisbelow(True)
 
     def by_order(order):
         return [result for result in results if result["order"] == order]
