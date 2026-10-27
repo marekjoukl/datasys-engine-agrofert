@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.antlr.v4.runtime.Token;
+
 import dk.itu.datasys.ColumnSpec;
 import dk.itu.datasys.ColumnType;
 import dk.itu.datasys.Comparison;
@@ -73,7 +75,7 @@ final class SqlAstBuilder extends SqlBaseVisitor<Object> {
             return unquote(ctx.STRING_LITERAL().getText());
         }
         if (ctx.LONG_LITERAL() != null) {
-            return Long.valueOf(ctx.LONG_LITERAL().getText());
+            return longValue(ctx.LONG_LITERAL().getSymbol());
         }
         return Double.valueOf(ctx.DOUBLE_LITERAL().getText());
     }
@@ -85,6 +87,17 @@ final class SqlAstBuilder extends SqlBaseVisitor<Object> {
             case ">" -> Comparison.GREATER_THAN;
             default -> throw new IllegalStateException("unknown comparison " + symbol);
         };
+    }
+
+    private static Long longValue(Token literal) {
+        try {
+            return Long.valueOf(literal.getText());
+        } catch (NumberFormatException e) {
+            int line = literal.getLine();
+            int column = literal.getCharPositionInLine();
+            throw new SqlParseException("line " + line + ":" + column + " "
+                    + literal.getText() + " is out of range for LONG", line, column);
+        }
     }
 
     private static String unquote(String literal) {

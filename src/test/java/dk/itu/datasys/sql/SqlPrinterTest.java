@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import dk.itu.datasys.ColumnSpec;
@@ -54,6 +56,27 @@ class SqlPrinterTest {
                 printed(Comparison.EQUALS, "Odense"));
         assertEquals("SELECT * FROM trips WHERE distance = 42;", printed(Comparison.EQUALS, 42L));
         assertEquals("SELECT * FROM trips WHERE distance = 0.1;", printed(Comparison.EQUALS, 0.1));
+    }
+
+    static Stream<Statement> everyStatementShape() {
+        return Stream.of(
+                new CreateTableStatement("trips", List.of(
+                        new ColumnSpec("city", ColumnType.STRING),
+                        new ColumnSpec("distance", ColumnType.LONG),
+                        new ColumnSpec("price", ColumnType.DOUBLE))),
+                new CopyStatement("trips", "data/trips-2026.csv"),
+                new SelectStatement("trips", Optional.empty()),
+                select(Comparison.EQUALS, "Odense"),
+                select(Comparison.LESS_THAN, -12L),
+                select(Comparison.GREATER_THAN, 99.99));
+    }
+
+    @ParameterizedTest
+    @MethodSource("everyStatementShape")
+    void everyStatementShapeSurvivesThePrinterRoundTrip(Statement original) {
+        List<Statement> reparsed = new SqlParser().parse(PRINTER.print(original));
+
+        assertEquals(List.of(original), reparsed);
     }
 
     @ParameterizedTest
