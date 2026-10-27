@@ -85,6 +85,19 @@ class LoggingIT {
     }
 
     @Test
+    void aSelectParsesTheCatalogOnceNoMatterHowManyPartitionsItReads(@TempDir Path dir)
+            throws Exception {
+        run(dir, "");
+
+        List<String> lines = execute(dir, "SELECT * FROM trips WHERE distance > 0;");
+
+        assertTrue(messages(lines).stream().anyMatch(m -> m.contains("partitionsRead=4")),
+                messages(lines).toString());
+        assertEquals(1, messages(lines).stream().filter(m -> m.startsWith("loaded table=trips")).count(),
+                messages(lines).toString());
+    }
+
+    @Test
     void aConstantContainingACommaCannotBreakTheLineFormat(@TempDir Path dir) throws Exception {
         List<String> lines = run(dir, "SELECT * FROM trips WHERE city = 'Vejle,Odense';");
 
@@ -149,6 +162,15 @@ class LoggingIT {
                 errors.get(0));
     }
 
+    @Test
+    void aNumberTooLargeForALongLeavesOneErrorLine(@TempDir Path dir) throws Exception {
+        List<String> errors = frontDoorErrors(dir, "-c",
+                "SELECT * FROM trips WHERE distance = 9223372036854775808");
+
+        assertEquals(1, errors.size(), errors.toString());
+        assertTrue(errors.get(0).contains("failed line=1 col=37"), errors.get(0));
+    }
+
     private static List<String> frontDoorErrors(Path dir, String... args) throws Exception {
         String sessionId = startSession();
         PrintStream originalErr = System.err;
@@ -168,9 +190,13 @@ class LoggingIT {
     }
 
     private static List<String> run(Path dir, String sql) throws Exception {
+        return execute(dir, SETUP + sql);
+    }
+
+    private static List<String> execute(Path dir, String sql) throws Exception {
         String sessionId = startSession();
         try {
-            new Executor(new StorageEngine(dir, 2), discard()).run(SETUP + sql);
+            new Executor(new StorageEngine(dir, 2), discard()).run(sql);
         } finally {
             MDC.clear();
         }
