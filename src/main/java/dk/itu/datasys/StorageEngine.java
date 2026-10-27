@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +27,7 @@ public final class StorageEngine {
 
     private final Path dataDirectory;
     private final int maxRowsPerPartition;
+    private final Map<String, TableCatalog> catalogs = new HashMap<>();
 
     public StorageEngine(Path dataDirectory) {
         this(dataDirectory, DEFAULT_MAX_ROWS_PER_PARTITION);
@@ -50,10 +52,21 @@ public final class StorageEngine {
     }
 
     private TableCatalog requireCatalog(String tableName) {
+        TableCatalog cached = catalogs.get(tableName);
+        if (cached != null) {
+            return cached;
+        }
         if (!Files.exists(catalogFile(tableName))) {
             throw new IllegalArgumentException("unknown table: " + tableName);
         }
-        return TableCatalog.load(catalogFile(tableName));
+        TableCatalog catalog = TableCatalog.load(catalogFile(tableName));
+        catalogs.put(tableName, catalog);
+        return catalog;
+    }
+
+    private void saveCatalog(TableCatalog catalog) {
+        TableCatalog.save(catalog, catalogFile(catalog.name()));
+        catalogs.put(catalog.name(), catalog);
     }
 
     public List<ColumnSpec> schema(String tableName) {
@@ -83,7 +96,7 @@ public final class StorageEngine {
             throw new UncheckedIOException(e);
         }
 
-        TableCatalog.save(new TableCatalog(tableName, columns,false, List.of()), catalogFile(tableName));
+        saveCatalog(new TableCatalog(tableName, columns, false, List.of()));
 
         LOGGER.debug("table={} columns={} durationMs={}",
                 field(tableName), columns.size(), millisSince(startedAt));
@@ -101,9 +114,7 @@ public final class StorageEngine {
         List<Object[]> rows = readCsv(csvFilePath, catalog.columns());
         List<PartitionMeta> partitions = writeDataFile(tableName, catalog.columns(), rows);
 
-        TableCatalog.save(
-                new TableCatalog(tableName, catalog.columns(), true, partitions),
-                catalogFile(tableName));
+        saveCatalog(new TableCatalog(tableName, catalog.columns(), true, partitions));
 
         LOGGER.debug("table={} file={} rows={} maxRowsPerPartition={} partitions={} durationMs={}",
                 field(tableName), field(Path.of(csvFilePath).getFileName()),
