@@ -107,7 +107,9 @@ class SqlParserTest {
         return Stream.of(
                 arguments("12", 12L),
                 arguments("12.0", 12.0),
-                arguments("'12'", "12"));
+                arguments("'12'", "12"),
+                arguments("9223372036854775807", Long.MAX_VALUE),
+                arguments("-9223372036854775808", Long.MIN_VALUE));
     }
 
     @ParameterizedTest
@@ -167,7 +169,10 @@ class SqlParserTest {
                 arguments("CREATE TABLE t (city TEXT);", 21),
                 arguments("SELECT * FROM t WHERE c = 'oops;", 26),
                 arguments("SELECT * trips;", 9),
-                arguments("SELECT * FROM trips; garbage", 21));
+                arguments("SELECT * FROM trips; garbage", 21),
+                // whole numbers just outside the LONG range
+                arguments("SELECT * FROM t WHERE x = 9223372036854775808;", 26),
+                arguments("SELECT * FROM t WHERE x = -9223372036854775809;", 26));
     }
 
     @ParameterizedTest
