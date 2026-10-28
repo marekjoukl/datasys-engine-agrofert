@@ -71,6 +71,18 @@ class LoggingIT {
     }
 
     @Test
+    void createAndCopySummaryLinesCarryTheCommittedVersion(@TempDir Path dir) throws Exception {
+        List<String> lines = run(dir, "");
+
+        assertTrue(messages(lines).stream().anyMatch(m -> m.startsWith(
+                        "statement=CREATE_TABLE table=trips columns=3 version=0 ")),
+                messages(lines).toString());
+        assertTrue(messages(lines).stream().anyMatch(m -> m.startsWith(
+                        "statement=COPY table=trips rows=8 partitions=4 version=1 ")),
+                messages(lines).toString());
+    }
+
+    @Test
     void theSelectSummaryLineTimesTheQueryWithoutTheOutput(@TempDir Path dir) throws Exception {
         List<String> lines = run(dir, LONG_TRIPS);
 

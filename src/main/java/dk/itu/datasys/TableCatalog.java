@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-record TableCatalog(String name, List<ColumnSpec> columns, boolean copied, List<PartitionMeta> partitions) {
+record TableCatalog(String name, List<ColumnSpec> columns, int version, List<PartitionMeta> partitions) {
     private static final Logger LOGGER = LoggerFactory.getLogger(TableCatalog.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 

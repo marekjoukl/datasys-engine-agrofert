@@ -9,12 +9,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +27,7 @@ public final class StorageEngine {
 
     private final Path dataDirectory;
     private final int maxRowsPerPartition;
-    private final Map<String, TableCatalog> catalogs = new HashMap<>();
+    private final Map<String, TableVersions> tables = new ConcurrentHashMap<>();
 
     public StorageEngine(Path dataDirectory) {
         this(dataDirectory, DEFAULT_MAX_ROWS_PER_PARTITION);
@@ -51,26 +51,35 @@ public final class StorageEngine {
         return tableDirectory(tableName).resolve("catalog.json");
     }
 
-    private TableCatalog requireCatalog(String tableName) {
-        TableCatalog cached = catalogs.get(tableName);
+    private TableVersions requireTable(String tableName) {
+        TableVersions cached = tables.get(tableName);
         if (cached != null) {
             return cached;
         }
         if (!Files.exists(catalogFile(tableName))) {
             throw new IllegalArgumentException("unknown table: " + tableName);
         }
-        TableCatalog catalog = TableCatalog.load(catalogFile(tableName));
-        catalogs.put(tableName, catalog);
-        return catalog;
+        return tables.computeIfAbsent(tableName,
+                name -> TableVersions.from(TableCatalog.load(catalogFile(name))));
     }
 
-    private void saveCatalog(TableCatalog catalog) {
-        TableCatalog.save(catalog, catalogFile(catalog.name()));
-        catalogs.put(catalog.name(), catalog);
+    private int commit(TableVersions table, int base, List<PartitionMeta> partitions) {
+        int version = table.commit(base, partitions);
+        saveNewest(table, version, partitions);
+        return version;
+    }
+
+    private void saveNewest(TableVersions table, int version, List<PartitionMeta> partitions) {
+        TableCatalog.save(new TableCatalog(table.name(), table.columns(), version, partitions),
+                catalogFile(table.name()));
+    }
+
+    Snapshot snapshot(String tableName) {
+        return requireTable(tableName).snapshot();
     }
 
     public List<ColumnSpec> schema(String tableName) {
-        return requireCatalog(tableName).columns();
+        return requireTable(tableName).columns();
     }
 
     public void createTable(String tableName, List<ColumnSpec> columns) {
@@ -96,29 +105,36 @@ public final class StorageEngine {
             throw new UncheckedIOException(e);
         }
 
-        saveCatalog(new TableCatalog(tableName, columns, false, List.of()));
+        TableVersions table = new TableVersions(tableName, columns, 0, List.of());
+        saveNewest(table, 0, List.of());
+        tables.put(tableName, table);
 
         LOGGER.debug("table={} columns={} durationMs={}",
                 field(tableName), columns.size(), millisSince(startedAt));
     }
 
-    public void copyFile(String tableName, String csvFilePath) {
+    public CopyResult copyFile(String tableName, String csvFilePath) {
         long startedAt = System.nanoTime();
-        TableCatalog catalog = requireCatalog(tableName);
+        TableVersions table = requireTable(tableName);
+        Snapshot base = table.snapshot();
 
-        if (catalog.copied()) {
+        if (base.version() > 0) {
             throw new UnsupportedOperationException(
                     "table " + tableName + " already has data");
         }
 
-        List<Object[]> rows = readCsv(csvFilePath, catalog.columns());
-        List<PartitionMeta> partitions = writeDataFile(tableName, catalog.columns(), rows);
+        List<Object[]> rows = readCsv(csvFilePath, table.columns());
+        if (rows.isEmpty()) {
+            return new CopyResult(0, 0, base.version());
+        }
+        List<PartitionMeta> partitions = writeDataFile(tableName, table.columns(), rows);
 
-        saveCatalog(new TableCatalog(tableName, catalog.columns(), true, partitions));
+        int version = commit(table, base.version(), partitions);
 
         LOGGER.debug("table={} file={} rows={} maxRowsPerPartition={} partitions={} durationMs={}",
                 field(tableName), field(Path.of(csvFilePath).getFileName()),
                 rows.size(), maxRowsPerPartition, partitions.size(), millisSince(startedAt));
+        return new CopyResult(rows.size(), partitions.size(), version);
     }
 
     private static List<Object[]> readCsv (String csvFilePath, List<ColumnSpec> columns) {
@@ -205,9 +221,9 @@ public final class StorageEngine {
     }
 
     public List<Object[]> readPartitionRows(String tableName, int partitionNumber) {
-        TableCatalog catalog = requireCatalog(tableName);
-        List<ColumnSpec> columns = catalog.columns();
-        PartitionMeta partition = catalog.partitions().get(partitionNumber);
+        TableVersions table = requireTable(tableName);
+        List<ColumnSpec> columns = table.columns();
+        PartitionMeta partition = table.snapshot().partitions().get(partitionNumber);
 
         int rowCount = partition.rowCount();
 
@@ -234,7 +250,7 @@ public final class StorageEngine {
     }
 
     public int partitionCount(String tableName) {
-        return requireCatalog(tableName).partitions().size();
+        return snapshot(tableName).partitions().size();
     }
 
     static int columnIndex(List<ColumnSpec> columns, String columnName) {
@@ -255,11 +271,12 @@ public final class StorageEngine {
     }
 
     List<MinMax> columnRanges(String tableName, int columnIndex) {
-        TableCatalog catalog = requireCatalog(tableName);
-        ColumnSpec column = catalog.columns().get(columnIndex);
+        TableVersions table = requireTable(tableName);
+        ColumnSpec column = table.columns().get(columnIndex);
+        List<PartitionMeta> partitions = table.snapshot().partitions();
 
-        List<MinMax> ranges = new ArrayList<>(catalog.partitions().size());
-        for (PartitionMeta partition : catalog.partitions()) {
+        List<MinMax> ranges = new ArrayList<>(partitions.size());
+        for (PartitionMeta partition : partitions) {
             ChunkMeta chunk = partition.chunks().get(column.name());
             ranges.add(Summaries.parse(column.type(), chunk.min(), chunk.max()));
         }
