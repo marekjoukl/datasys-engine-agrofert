@@ -42,6 +42,15 @@ class SqlPrinterTest {
     }
 
     @Test
+    void printsDeleteWithAndWithoutAWhereClause() {
+        assertEquals("DELETE FROM trips;",
+                PRINTER.print(new DeleteStatement("trips", Optional.empty())));
+        assertEquals("DELETE FROM trips WHERE city = 'Aarhus';",
+                PRINTER.print(new DeleteStatement("trips", Optional.of(
+                        new Predicate("city", Comparison.EQUALS, "Aarhus")))));
+    }
+
+    @Test
     void printsEveryComparisonSymbol() {
         assertEquals("SELECT * FROM trips WHERE distance = 100;", printed(Comparison.EQUALS, 100L));
         assertEquals("SELECT * FROM trips WHERE distance < 100;",
@@ -68,7 +77,10 @@ class SqlPrinterTest {
                 new SelectStatement("trips", Optional.empty()),
                 select(Comparison.EQUALS, "Odense"),
                 select(Comparison.LESS_THAN, -12L),
-                select(Comparison.GREATER_THAN, 99.99));
+                select(Comparison.GREATER_THAN, 99.99),
+                new DeleteStatement("trips", Optional.empty()),
+                new DeleteStatement("trips", Optional.of(
+                        new Predicate("distance", Comparison.LESS_THAN, 50L))));
     }
 
     @ParameterizedTest

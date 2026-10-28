@@ -79,6 +79,21 @@ class SqlParserTest {
     }
 
     @Test
+    void deleteWithoutWhereParsesToTheExpectedAst() {
+        assertEquals(
+                new DeleteStatement("trips", Optional.empty()),
+                one("DELETE FROM trips;"));
+    }
+
+    @Test
+    void deleteWithWhereParsesToTheExpectedAst() {
+        assertEquals(
+                new DeleteStatement("trips", Optional.of(
+                        new Predicate("city", Comparison.EQUALS, "Aarhus"))),
+                one("DELETE FROM trips WHERE city = 'Aarhus';"));
+    }
+
+    @Test
     void everyComparisonOperatorIsMapped() {
         assertEquals(Comparison.EQUALS, comparisonOf("SELECT * FROM t WHERE a = 1;"));
         assertEquals(Comparison.LESS_THAN, comparisonOf("SELECT * FROM t WHERE a < 1;"));
@@ -91,13 +106,14 @@ class SqlParserTest {
                 CREATE TABLE trips (city STRING, distance LONG, price DOUBLE);
                 COPY trips FROM 'trips.csv';
                 SELECT * FROM trips WHERE distance > 100;
+                DELETE FROM trips WHERE city = 'Aarhus';
                 SELECT * FROM trips;
                 """);
 
-        assertEquals(4, statements.size());
+        assertEquals(5, statements.size());
         assertEquals(
                 List.of(CreateTableStatement.class, CopyStatement.class,
-                        SelectStatement.class, SelectStatement.class),
+                        SelectStatement.class, DeleteStatement.class, SelectStatement.class),
                 statements.stream().map(Object::getClass).toList());
     }
 
