@@ -15,6 +15,7 @@ import org.slf4j.MDC;
 import dk.itu.datasys.sql.Binder;
 import dk.itu.datasys.sql.CopyStatement;
 import dk.itu.datasys.sql.CreateTableStatement;
+import dk.itu.datasys.sql.DeleteStatement;
 import dk.itu.datasys.sql.SelectStatement;
 import dk.itu.datasys.sql.SqlParser;
 import dk.itu.datasys.sql.SqlPrinter;
@@ -84,6 +85,8 @@ public final class Executor {
                             plan.scanStats().partitionsRead(), plan.scanStats().partitionsPruned(),
                             millisSince(startedAt + output.writeNanos()), millisSince(startedAt));
                 }
+                case DeleteStatement delete ->
+                        throw new UnsupportedOperationException("DELETE is not implemented yet");
             }
         } catch (RuntimeException e) {
             LOGGER.error("statement failed type={} error={} message={} durationMs={}",

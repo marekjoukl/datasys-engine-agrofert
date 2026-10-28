@@ -3,6 +3,7 @@ package dk.itu.datasys.sql;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import dk.itu.datasys.ColumnSpec;
 import dk.itu.datasys.Comparison;
@@ -13,6 +14,7 @@ public final class SqlPrinter {
             case CreateTableStatement create -> printCreateTable(create);
             case CopyStatement copy -> printCopy(copy);
             case SelectStatement select -> printSelect(select);
+            case DeleteStatement delete -> printDelete(delete);
         };
     }
 
@@ -29,11 +31,20 @@ public final class SqlPrinter {
     }
 
     private static String printSelect(SelectStatement select){
-        if (select.where().isEmpty()) {
-            return "SELECT * FROM " + select.tableName() + ";";
-        } else {
-            return "SELECT * FROM " + select.tableName() + " WHERE " + select.where().get().columnName() + " " + symbol(select.where().get().comparison()) + " " + literal(select.where().get().constant()) + ";";
+        return "SELECT * FROM " + select.tableName() + where(select.where()) + ";";
+    }
+
+    private static String printDelete(DeleteStatement delete) {
+        return "DELETE FROM " + delete.tableName() + where(delete.where()) + ";";
+    }
+
+    private static String where(Optional<Predicate> where) {
+        if (where.isEmpty()) {
+            return "";
         }
+        Predicate predicate = where.get();
+        return " WHERE " + predicate.columnName() + " " + symbol(predicate.comparison())
+                + " " + literal(predicate.constant());
     }
     private static String symbol(Comparison comparison) {
         return switch (comparison) {

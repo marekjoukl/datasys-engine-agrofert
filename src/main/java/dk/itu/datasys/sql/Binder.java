@@ -2,6 +2,7 @@ package dk.itu.datasys.sql;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import dk.itu.datasys.ColumnSpec;
@@ -17,7 +18,8 @@ public final class Binder {
         switch (s) {
             case CreateTableStatement create -> bindCreateTable(create);
             case CopyStatement copy -> bindCopy(copy);
-            case SelectStatement select -> bindSelect(select);
+            case SelectStatement select -> bindWhere(select.tableName(), select.where());
+            case DeleteStatement delete -> bindWhere(delete.tableName(), delete.where());
         }
     }
 
@@ -40,13 +42,13 @@ public final class Binder {
         }
     }
 
-    private void bindSelect(SelectStatement select){
-        List<ColumnSpec> cols = engine.schema(select.tableName());
+    private void bindWhere(String tableName, Optional<Predicate> where) {
+        List<ColumnSpec> cols = engine.schema(tableName);
 
-        if (select.where().isEmpty()) {
+        if (where.isEmpty()) {
             return;
         }
-        Predicate predicate = select.where().get();
+        Predicate predicate = where.get();
         ColumnSpec column = findColumn(cols, predicate.columnName());
 
         Class<?> expected = switch (column.type()) {

@@ -38,6 +38,9 @@ class BinderIT {
             "SELECT * FROM trips WHERE price < 50.0;",
             "COPY trips FROM 'trips.csv';",
             "CREATE TABLE other (a STRING, b LONG);",
+            "DELETE FROM trips;",
+            "DELETE FROM trips WHERE city = 'Aarhus';",
+            "DELETE FROM trips WHERE price > 50.0;",
     })
     void validStatementsBind(String sql, @TempDir Path dir) {
         assertDoesNotThrow(() -> bind(dir, sql));
@@ -52,6 +55,9 @@ class BinderIT {
             "SELECT * FROM trips WHERE distance = 1.0;",    // Double against LONG
             "SELECT * FROM trips WHERE city = 1;",          // Long against STRING
             "CREATE TABLE t (a STRING, a LONG);",           // duplicate column
+            "DELETE FROM nope;",                            // unknown table
+            "DELETE FROM trips WHERE nope = 1;",            // unknown column
+            "DELETE FROM trips WHERE distance = 'x';",      // String against LONG
     })
     void invalidStatementsAreRejected(String sql, @TempDir Path dir) {
         assertThrows(IllegalArgumentException.class, () -> bind(dir, sql));
