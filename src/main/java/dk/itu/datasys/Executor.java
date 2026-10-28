@@ -65,15 +65,15 @@ public final class Executor {
             switch (statement) {
                 case CreateTableStatement create -> {
                     engine.createTable(create.tableName(), create.columns());
-                    LOGGER.debug("statement=CREATE_TABLE table={} columns={} durationMs={}",
+                    LOGGER.debug("statement=CREATE_TABLE table={} columns={} version={} durationMs={}",
                             field(create.tableName()), create.columns().size(),
-                            millisSince(startedAt));
+                            engine.snapshot(create.tableName()).version(), millisSince(startedAt));
                 }
                 case CopyStatement copy -> {
-                    engine.copyFile(copy.tableName(), copy.csvFilePath());
-                    LOGGER.debug("statement=COPY table={} partitions={} durationMs={}",
-                            field(copy.tableName()), engine.partitionCount(copy.tableName()),
-                            millisSince(startedAt));
+                    CopyResult result = engine.copyFile(copy.tableName(), copy.csvFilePath());
+                    LOGGER.debug("statement=COPY table={} rows={} partitions={} version={} durationMs={}",
+                            field(copy.tableName()), result.rows(), result.partitions(),
+                            result.version(), millisSince(startedAt));
                 }
                 case SelectStatement select -> {
                     Plan plan = planner.plan(select);

@@ -91,6 +91,17 @@ class CopyFileIT {
     }
 
     @Test
+    void copyCommitsVersionOneAndReportsWhatItWrote(@TempDir Path dir) {
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", TRIPS);
+
+        CopyResult result = engine.copyFile("trips", GOLDEN_CSV);
+
+        assertEquals(new CopyResult(8, 4, 1), result);
+        assertEquals(1, TableCatalog.load(dir.resolve("trips").resolve("catalog.json")).version());
+    }
+
+    @Test
     void copyIntoUnknownTableIsRejected(@TempDir Path dir) {
         StorageEngine engine = new StorageEngine(dir);
 
@@ -136,21 +147,24 @@ class CopyFileIT {
     }
 
     @Test
-    void secondCopyIsRejectedEvenWhenTheFirstWasEmpty(@TempDir Path dir) throws Exception {
+    void anEmptyCopyCommitsNoVersionAndWritesNothing(@TempDir Path dir) throws Exception {
         Path emptyCsv = dir.resolve("empty.csv");
         Files.writeString(emptyCsv, "");
 
         StorageEngine engine = new StorageEngine(dir, 2);
         engine.createTable("trips", TRIPS);
-        engine.copyFile("trips", emptyCsv.toString());
+
+        assertEquals(new CopyResult(0, 0, 0), engine.copyFile("trips", emptyCsv.toString()),
+                "the result reports the version the copy read");
 
         TableCatalog catalog = TableCatalog.load(dir.resolve("trips").resolve("catalog.json"));
-        assertTrue(catalog.partitions().isEmpty(), "an empty CSV produces no partitions");
-        assertTrue(catalog.copied(), "the table has still been copied into");
+        assertEquals(0, catalog.version());
+        assertTrue(catalog.partitions().isEmpty());
+        assertTrue(Files.notExists(dir.resolve("trips").resolve("trips.data")),
+                "an empty copy must not leave a data file");
 
-        assertThrows(
-                UnsupportedOperationException.class,
-                () -> engine.copyFile("trips", GOLDEN_CSV));
+        assertEquals(1, engine.copyFile("trips", GOLDEN_CSV).version(),
+                "a later copy still commits the next version");
     }
 
     private static void assertMinMax(PartitionMeta partition, String column, String min, String max) {

@@ -33,7 +33,28 @@ class StorageEngineIT {
         TableCatalog onDisk = TableCatalog.load(dir.resolve("trips").resolve("catalog.json"));
         assertEquals("trips", onDisk.name());
         assertEquals(TRIPS, onDisk.columns());
+        assertEquals(0, onDisk.version());
         assertTrue(onDisk.partitions().isEmpty());
+    }
+
+    @Test
+    void createTableCommitsVersionZero(@TempDir Path dir) {
+        StorageEngine engine = new StorageEngine(dir);
+        engine.createTable("trips", TRIPS);
+
+        assertEquals(new Snapshot("trips", 0, List.of()), engine.snapshot("trips"));
+    }
+
+    @Test
+    void aRestartedEngineContinuesFromTheStoredVersion(@TempDir Path dir) {
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", TRIPS);
+        engine.copyFile("trips", "src/test/resources/trips.csv");
+
+        Snapshot restarted = new StorageEngine(dir, 2).snapshot("trips");
+
+        assertEquals(engine.snapshot("trips"), restarted);
+        assertEquals(1, restarted.version());
     }
 
     @Test
