@@ -209,24 +209,22 @@ class CopyFileIT {
     }
 
     @Test
-    void anEmptyCopyCommitsNoVersionAndWritesNothing(@TempDir Path dir) throws Exception {
+    void anEmptyCopyCommitsAVersionButWritesNothing(@TempDir Path dir) throws Exception {
         Path emptyCsv = dir.resolve("empty.csv");
         Files.writeString(emptyCsv, "");
 
         StorageEngine engine = new StorageEngine(dir, 2);
         engine.createTable("trips", TRIPS);
 
-        assertEquals(new CopyResult(0, 0, 0), engine.copyFile("trips", emptyCsv.toString()),
-                "the result reports the version the copy read");
+        assertEquals(new CopyResult(0, 0, 1), engine.copyFile("trips", emptyCsv.toString()));
 
         TableCatalog catalog = TableCatalog.load(dir.resolve("trips").resolve("catalog.json"));
-        assertEquals(0, catalog.version());
+        assertEquals(1, catalog.version());
         assertTrue(catalog.partitions().isEmpty());
         assertTrue(Files.notExists(dir.resolve("trips").resolve("trips.data")),
                 "an empty copy must not leave a data file");
 
-        assertEquals(1, engine.copyFile("trips", GOLDEN_CSV).version(),
-                "a later copy still commits the next version");
+        assertEquals(2, engine.copyFile("trips", GOLDEN_CSV).version());
     }
 
     private static List<Object[]> allRows(StorageEngine engine) {

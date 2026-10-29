@@ -122,10 +122,9 @@ public final class StorageEngine {
         Snapshot base = table.snapshot();
 
         List<Object[]> rows = readCsv(csvFilePath, table.columns());
-        if (rows.isEmpty()) {
-            return new CopyResult(0, 0, base.version());
-        }
-        List<PartitionMeta> partitions = appendPartitions(tableName, table.columns(), rows);
+        List<PartitionMeta> partitions = rows.isEmpty()
+                ? List.of()
+                : appendPartitions(tableName, table.columns(), rows);
 
         List<PartitionMeta> next = new ArrayList<>(base.partitions());
         next.addAll(partitions);
