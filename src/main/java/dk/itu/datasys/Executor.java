@@ -80,9 +80,10 @@ public final class Executor {
                     Output output = print(plan.root());
 
                     LOGGER.debug("statement=SELECT table={} rowsOut={} partitionsRead={}"
-                            + " partitionsPruned={} queryMs={} durationMs={}",
+                            + " partitionsPruned={} version={} queryMs={} durationMs={}",
                             field(select.tableName()), output.rowsOut(),
                             plan.scanStats().partitionsRead(), plan.scanStats().partitionsPruned(),
+                            plan.version(),
                             millisSince(startedAt + output.writeNanos()), millisSince(startedAt));
                 }
                 case DeleteStatement delete ->

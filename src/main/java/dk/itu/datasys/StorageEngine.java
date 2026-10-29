@@ -226,10 +226,8 @@ public final class StorageEngine {
         return partitions;
     }
 
-    public List<Object[]> readPartitionRows(String tableName, int partitionNumber) {
-        TableVersions table = requireTable(tableName);
-        List<ColumnSpec> columns = table.columns();
-        PartitionMeta partition = table.snapshot().partitions().get(partitionNumber);
+    public List<Object[]> readPartitionRows(String tableName, PartitionMeta partition) {
+        List<ColumnSpec> columns = requireTable(tableName).columns();
 
         int rowCount = partition.rowCount();
 
@@ -274,18 +272,5 @@ public final class StorageEngine {
 
     static String field(Object value) {
         return String.valueOf(value).replace(',', '_');
-    }
-
-    List<MinMax> columnRanges(String tableName, int columnIndex) {
-        TableVersions table = requireTable(tableName);
-        ColumnSpec column = table.columns().get(columnIndex);
-        List<PartitionMeta> partitions = table.snapshot().partitions();
-
-        List<MinMax> ranges = new ArrayList<>(partitions.size());
-        for (PartitionMeta partition : partitions) {
-            ChunkMeta chunk = partition.chunks().get(column.name());
-            ranges.add(Summaries.parse(column.type(), chunk.min(), chunk.max()));
-        }
-        return ranges;
     }
 }

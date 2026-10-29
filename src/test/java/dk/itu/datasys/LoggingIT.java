@@ -66,7 +66,7 @@ class LoggingIT {
 
         assertTrue(
                 messages(lines).stream().anyMatch(m -> m.startsWith(
-                        "statement=SELECT table=trips rowsOut=2 partitionsRead=1 partitionsPruned=3")),
+                        "statement=SELECT table=trips rowsOut=2 partitionsRead=1 partitionsPruned=3 version=1 ")),
                 messages(lines).toString());
     }
 
