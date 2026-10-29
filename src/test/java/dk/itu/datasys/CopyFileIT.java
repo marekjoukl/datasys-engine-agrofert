@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -111,14 +112,75 @@ class CopyFileIT {
     }
 
     @Test
-    void secondCopyIsRejected(@TempDir Path dir) {
+    void aSecondCopyAppendsItsPartitionsAndCommitsTheNextVersion(@TempDir Path dir) {
         StorageEngine engine = new StorageEngine(dir, 2);
         engine.createTable("trips", TRIPS);
         engine.copyFile("trips", GOLDEN_CSV);
+        List<PartitionMeta> first = engine.snapshot("trips").partitions();
 
-        assertThrows(
-                UnsupportedOperationException.class,
-                () -> engine.copyFile("trips", GOLDEN_CSV));
+        CopyResult second = engine.copyFile("trips", GOLDEN_CSV);
+
+        assertEquals(new CopyResult(8, 4, 2), second);
+        Snapshot snapshot = engine.snapshot("trips");
+        assertEquals(8, snapshot.partitions().size());
+        assertEquals(first, snapshot.partitions().subList(0, 4),
+                "the first copy's partitions keep their offsets");
+        assertEquals(2, TableCatalog.load(dir.resolve("trips").resolve("catalog.json")).version());
+    }
+
+    @Test
+    void aSecondCopyIsReadBackAfterTheFirst(@TempDir Path dir) {
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", TRIPS);
+        engine.copyFile("trips", GOLDEN_CSV);
+        List<Object[]> once = allRows(engine);
+
+        engine.copyFile("trips", GOLDEN_CSV);
+        List<Object[]> twice = allRows(engine);
+
+        assertEquals(16, twice.size());
+        for (int i = 0; i < once.size(); i++) {
+            assertArrayEquals(once.get(i), twice.get(i));
+            assertArrayEquals(once.get(i), twice.get(i + once.size()));
+        }
+    }
+
+    @Test
+    void chunkOffsetsStayContiguousAcrossTwoCopies(@TempDir Path dir) throws Exception {
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", TRIPS);
+        engine.copyFile("trips", GOLDEN_CSV);
+        engine.copyFile("trips", GOLDEN_CSV);
+
+        long expectedOffset = 6;
+        for (PartitionMeta partition : engine.snapshot("trips").partitions()) {
+            for (ColumnSpec column : TRIPS) {
+                ChunkMeta chunk = partition.chunks().get(column.name());
+                assertEquals(expectedOffset, chunk.offset(),
+                        "the second copy starts where the first one ended, with no second header");
+                expectedOffset += chunk.length();
+            }
+        }
+        assertEquals(expectedOffset, Files.size(dir.resolve("trips").resolve("trips.data")));
+    }
+
+    @Test
+    void aFailedSecondCopyLeavesTheFirstVersion(@TempDir Path dir) throws Exception {
+        Path badCsv = dir.resolve("bad.csv");
+        Files.writeString(badCsv, "Copenhagen,12,23.5\nAarhus,not-a-number,301.0\n");
+
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", TRIPS);
+        engine.copyFile("trips", GOLDEN_CSV);
+        Snapshot before = engine.snapshot("trips");
+        long sizeBefore = Files.size(dir.resolve("trips").resolve("trips.data"));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> engine.copyFile("trips", badCsv.toString()));
+
+        assertEquals(before, engine.snapshot("trips"));
+        assertEquals(1, TableCatalog.load(dir.resolve("trips").resolve("catalog.json")).version());
+        assertEquals(sizeBefore, Files.size(dir.resolve("trips").resolve("trips.data")));
     }
 
     @Test
@@ -165,6 +227,14 @@ class CopyFileIT {
 
         assertEquals(1, engine.copyFile("trips", GOLDEN_CSV).version(),
                 "a later copy still commits the next version");
+    }
+
+    private static List<Object[]> allRows(StorageEngine engine) {
+        List<Object[]> rows = new ArrayList<>();
+        for (int p = 0; p < engine.partitionCount("trips"); p++) {
+            rows.addAll(engine.readPartitionRows("trips", p));
+        }
+        return rows;
     }
 
     private static void assertMinMax(PartitionMeta partition, String column, String min, String max) {
