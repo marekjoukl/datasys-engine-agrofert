@@ -31,7 +31,7 @@ The check lives in one shared function in `Pruner`, used by both the planner and
 
 ## New version
 
-A `DELETE` that matches no rows does not create a new version, since the table has not changed.
+A `DELETE` that matches no rows does not create a new version, since the table has not changed. The same holds for a `COPY` of an empty file.
 
 ## Partition placement
 
