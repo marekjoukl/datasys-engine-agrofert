@@ -79,6 +79,34 @@ class PlannerIT {
     }
 
     @Test
+    void aPlanKeepsReadingTheVersionItPinnedAfterALaterCopy(@TempDir Path dir) {
+        StorageEngine engine = copy(dir);
+        Planner planner = new Planner(engine);
+        Plan pinned = planner.plan(new SelectStatement("trips", Optional.empty()));
+
+        engine.copyFile("trips", SORTED_CSV);
+
+        assertEquals(1, pinned.version());
+        assertEquals(8, drain(pinned.root()).size(), "the second copy is not visible to this plan");
+
+        Plan fresh = planner.plan(new SelectStatement("trips", Optional.empty()));
+        assertEquals(2, fresh.version());
+        assertEquals(16, drain(fresh.root()).size());
+    }
+
+    @Test
+    void pruningDecidesOnThePinnedVersion(@TempDir Path dir) {
+        StorageEngine engine = copy(dir);
+        Plan pinned = new Planner(engine).plan(new SelectStatement("trips",
+                Optional.of(new Predicate("distance", Comparison.GREATER_THAN, 100L))));
+
+        engine.copyFile("trips", SORTED_CSV);
+
+        assertEquals(new ScanStats(4, 2, 2), pinned.scanStats());
+        assertEquals(4, drain(pinned.root()).size());
+    }
+
+    @Test
     void rejectsAnUnknownTable(@TempDir Path dir) {
         Planner planner = new Planner(copy(dir));
 

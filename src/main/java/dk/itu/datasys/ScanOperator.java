@@ -13,16 +13,16 @@ public final class ScanOperator implements Operator {
     private static final Logger LOGGER = LoggerFactory.getLogger(ScanOperator.class);
     private final StorageEngine engine;
     private final String tableName;
-    private final List<Integer> partitionNumbers;
+    private final List<PartitionMeta> partitions;
 
     private int nextPartition;
     private Iterator<Object[]> rows = Collections.emptyIterator();
     private int rowsOut;
 
-    public ScanOperator (StorageEngine engine, String tableName, List<Integer> partitionNumbers) {
+    public ScanOperator (StorageEngine engine, String tableName, List<PartitionMeta> partitions) {
         this.engine = engine;
         this.tableName = tableName;
-        this.partitionNumbers = partitionNumbers;
+        this.partitions = partitions;
     }
 
     @Override
@@ -34,11 +34,10 @@ public final class ScanOperator implements Operator {
     @Override
     public Object[] next (){
         while (!rows.hasNext()) {
-            if (nextPartition == partitionNumbers.size()) {
+            if (nextPartition == partitions.size()) {
                 return null;
             }
-            int partitionNumber = partitionNumbers.get(nextPartition++);
-            rows = engine.readPartitionRows(tableName, partitionNumber).iterator();
+            rows = engine.readPartitionRows(tableName, partitions.get(nextPartition++)).iterator();
         }
         rowsOut++;
         return rows.next();
@@ -47,6 +46,6 @@ public final class ScanOperator implements Operator {
     public void close(){
         rows = Collections.emptyIterator();
         LOGGER.debug("table={} partitions={} rowsOut={}",
-                tableName, partitionNumbers.size(), rowsOut);
+                tableName, partitions.size(), rowsOut);
     }
 }

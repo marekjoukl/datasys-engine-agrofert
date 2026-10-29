@@ -231,8 +231,8 @@ class CopyFileIT {
 
     private static List<Object[]> allRows(StorageEngine engine) {
         List<Object[]> rows = new ArrayList<>();
-        for (int p = 0; p < engine.partitionCount("trips"); p++) {
-            rows.addAll(engine.readPartitionRows("trips", p));
+        for (PartitionMeta partition : engine.snapshot("trips").partitions()) {
+            rows.addAll(engine.readPartitionRows("trips", partition));
         }
         return rows;
     }

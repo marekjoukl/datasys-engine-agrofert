@@ -27,6 +27,11 @@ final class Summaries {
         return new MinMax(min, max);
     }
 
+    static MinMax of(PartitionMeta partition, ColumnSpec column) {
+        ChunkMeta chunk = partition.chunks().get(column.name());
+        return parse(column.type(), chunk.min(), chunk.max());
+    }
+
     static MinMax parse(ColumnType type, String min, String max) {
         return new MinMax(
                 CsvParser.parseValue(type, min),

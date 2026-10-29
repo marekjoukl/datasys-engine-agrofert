@@ -4,7 +4,6 @@ import static dk.itu.datasys.StorageEngine.field;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.IntStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,32 +23,35 @@ public final class Planner {
     public Plan plan(SelectStatement select) {
         String tableName = select.tableName();
         List <ColumnSpec> schema = engine.schema(tableName);
-        int total = engine.partitionCount(tableName);
+        Snapshot snapshot = engine.snapshot(tableName);
+        int total = snapshot.partitions().size();
 
-        List<Integer> partitions;
+        List<PartitionMeta> partitions;
         Operator root;
 
         if (select.where().isEmpty()) {
-            partitions = IntStream.range(0, total).boxed().toList();
+            partitions = snapshot.partitions();
             root = new ScanOperator(engine, tableName, partitions);
         } else {
             ColumnPredicate predicate = ColumnPredicate.of(schema, select.where().get());
-            partitions = partitionsToRead(tableName, schema, predicate);
+            partitions = partitionsToRead(snapshot, schema, predicate);
             root = new FilterOperator(new ScanOperator(engine, tableName, partitions), predicate);
         }
 
         int read = partitions.size();
-        return new Plan(root, new ScanStats(total, read, total - read));
+        return new Plan(root, new ScanStats(total, read, total - read), snapshot.version());
     }
 
-    private List<Integer> partitionsToRead(String tableName, List<ColumnSpec> schema,
-                                           ColumnPredicate predicate) {
-        String columnName = schema.get(predicate.columnIndex()).name();
-        List<MinMax> ranges = engine.columnRanges(tableName, predicate.columnIndex());
+    private List<PartitionMeta> partitionsToRead(Snapshot snapshot, List<ColumnSpec> schema,
+                                                 ColumnPredicate predicate) {
+        String tableName = snapshot.table();
+        ColumnSpec column = schema.get(predicate.columnIndex());
+        String columnName = column.name();
+        List<PartitionMeta> partitions = snapshot.partitions();
 
-        List<Integer> surviving = new ArrayList<>();
-        for (int number = 0; number < ranges.size(); number++) {
-            MinMax range = ranges.get(number);
+        List<PartitionMeta> surviving = new ArrayList<>();
+        for (int number = 0; number < partitions.size(); number++) {
+            MinMax range = Summaries.of(partitions.get(number), column);
             boolean canMatch = predicate.canMatch(range);
 
             LOGGER.debug(
@@ -59,7 +61,7 @@ public final class Planner {
                     field(range.min()), field(range.max()), canMatch ? "READ" : "PRUNED");
 
             if (canMatch) {
-                surviving.add(number);
+                surviving.add(partitions.get(number));
             }
         }
         return surviving;
