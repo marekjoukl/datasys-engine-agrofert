@@ -86,8 +86,14 @@ public final class Executor {
                             plan.version(),
                             millisSince(startedAt + output.writeNanos()), millisSince(startedAt));
                 }
-                case DeleteStatement delete ->
-                        throw new UnsupportedOperationException("DELETE is not implemented yet");
+                case DeleteStatement delete -> {
+                    DeleteResult result = engine.delete(delete.tableName(), delete.where());
+                    LOGGER.debug("statement=DELETE table={} rowsDeleted={} partitionsRewritten={}"
+                            + " partitionsCarried={} version={} durationMs={}",
+                            field(delete.tableName()), result.rowsDeleted(),
+                            result.partitionsRewritten(), result.partitionsCarried(),
+                            result.version(), millisSince(startedAt));
+                }
             }
         } catch (RuntimeException e) {
             LOGGER.error("statement failed type={} error={} message={} durationMs={}",

@@ -13,11 +13,14 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import dk.itu.datasys.sql.Predicate;
 
 public final class StorageEngine {
 
@@ -132,6 +135,51 @@ public final class StorageEngine {
                 field(tableName), field(Path.of(csvFilePath).getFileName()),
                 rows.size(), maxRowsPerPartition, partitions.size(), millisSince(startedAt));
         return new CopyResult(rows.size(), partitions.size(), version);
+    }
+
+    public DeleteResult delete(String tableName, Optional<Predicate> where) {
+        long startedAt = System.nanoTime();
+        TableVersions table = requireTable(tableName);
+        List<ColumnSpec> columns = table.columns();
+        Snapshot base = table.snapshot();
+
+        Optional<ColumnPredicate> predicate = where.map(p -> ColumnPredicate.of(columns, p));
+        Set<PartitionMeta> rewriteSet = new HashSet<>(predicate
+                .map(p -> Pruner.partitionsThatMayMatch(base, columns, p))
+                .orElse(base.partitions()));
+
+        List<PartitionMeta> next = new ArrayList<>();
+        int rowsDeleted = 0;
+        int rewritten = 0;
+        for (PartitionMeta partition : base.partitions()) {
+            if (!rewriteSet.contains(partition)) {
+                next.add(partition);
+                continue;
+            }
+            List<Object[]> rows = readPartitionRows(tableName, partition);
+            List<Object[]> survivors = rows.stream()
+                    .filter(row -> predicate.isPresent() && !predicate.get().matches(row))
+                    .toList();
+            if (survivors.size() == rows.size()) {
+                next.add(partition);
+                continue;
+            }
+            rowsDeleted += rows.size() - survivors.size();
+            rewritten++;
+            if (!survivors.isEmpty()) {
+                next.addAll(appendPartitions(tableName, columns, survivors));
+            }
+        }
+        int carried = base.partitions().size() - rewritten;
+
+        if (rowsDeleted == 0) {
+            return new DeleteResult(0, 0, carried, base.version());
+        }
+        int version = commit(table, base.version(), next);
+
+        LOGGER.debug("table={} rowsDeleted={} partitionsRewritten={} partitionsCarried={} durationMs={}",
+                field(tableName), rowsDeleted, rewritten, carried, millisSince(startedAt));
+        return new DeleteResult(rowsDeleted, rewritten, carried, version);
     }
 
     private static List<Object[]> readCsv (String csvFilePath, List<ColumnSpec> columns) {

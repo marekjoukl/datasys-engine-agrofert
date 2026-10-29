@@ -83,6 +83,16 @@ class LoggingIT {
     }
 
     @Test
+    void theDeleteSummaryLineCarriesTheRewriteStatsAndTheVersion(@TempDir Path dir) throws Exception {
+        List<String> lines = run(dir, "DELETE FROM trips WHERE distance = 95;");
+
+        assertTrue(messages(lines).stream().anyMatch(m -> m.startsWith(
+                        "statement=DELETE table=trips rowsDeleted=1 partitionsRewritten=1"
+                        + " partitionsCarried=3 version=2 ")),
+                messages(lines).toString());
+    }
+
+    @Test
     void theSelectSummaryLineTimesTheQueryWithoutTheOutput(@TempDir Path dir) throws Exception {
         List<String> lines = run(dir, LONG_TRIPS);
 

@@ -40,6 +40,27 @@ class EngineIT {
     }
 
     @Test
+    void aScriptWithTwoCopiesAndADeleteReturnsTheLoadedRowsMinusTheDeletedOnes(@TempDir Path dir) {
+        Result result = run(dir, "-f", script(dir, SETUP + """
+                COPY trips FROM '%s';
+                DELETE FROM trips WHERE distance < 100;
+                SELECT * FROM trips;
+                """.formatted(TRIPS_CSV)));
+
+        assertEquals(0, result.status(), result.err());
+        assertEquals(csv(
+                "Copenhagen,140,210.0",
+                "Aarhus,187,301.0",
+                "Aalborg,210,340.5",
+                "Esbjerg,299,450.25",
+                "Copenhagen,140,210.0",
+                "Aarhus,187,301.0",
+                "Aalborg,210,340.5",
+                "Esbjerg,299,450.25"),
+                result.out());
+    }
+
+    @Test
     void everyRowIsPrintedWhenThereIsNoWhereClause(@TempDir Path dir) {
         Result result = run(dir, "-f", script(dir, SETUP + "SELECT * FROM trips;"));
 
