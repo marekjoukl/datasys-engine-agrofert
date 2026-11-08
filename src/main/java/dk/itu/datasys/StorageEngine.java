@@ -32,6 +32,8 @@ public final class StorageEngine {
     private final int maxRowsPerPartition;
     private final Map<String, TableVersions> tables = new ConcurrentHashMap<>();
 
+    Runnable beforeCommit = () -> { };
+
     public StorageEngine(Path dataDirectory) {
         this(dataDirectory, DEFAULT_MAX_ROWS_PER_PARTITION);
     }
@@ -67,9 +69,9 @@ public final class StorageEngine {
     }
 
     private int commit(TableVersions table, int base, List<PartitionMeta> partitions) {
-        int version = table.commit(base, partitions);
-        saveNewest(table, version, partitions);
-        return version;
+        beforeCommit.run();
+        return table.commit(base, partitions,
+                (committed, version) -> saveNewest(table, version, committed));
     }
 
     private void saveNewest(TableVersions table, int version, List<PartitionMeta> partitions) {
