@@ -33,6 +33,7 @@ public final class StorageEngine {
     private final Map<String, TableVersions> tables = new ConcurrentHashMap<>();
 
     Runnable beforeCommit = () -> { };
+    Runnable afterReserve = () -> { };
 
     public StorageEngine(Path dataDirectory) {
         this(dataDirectory, DEFAULT_MAX_ROWS_PER_PARTITION);
@@ -65,7 +66,33 @@ public final class StorageEngine {
             throw new IllegalArgumentException("unknown table: " + tableName);
         }
         return tables.computeIfAbsent(tableName,
-                name -> TableVersions.from(TableCatalog.load(catalogFile(name))));
+                name -> TableVersions.from(TableCatalog.load(catalogFile(name)), dataEnd(name)));
+    }
+
+    private Path dataFile(String tableName) {
+        return tableDirectory(tableName).resolve(tableName + ".data");
+    }
+
+    private long dataEnd(String tableName) {
+        Path file = dataFile(tableName);
+        try {
+            if (Files.notExists(file)) {
+                writeHeader(file);
+            }
+            return Files.size(file);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static void writeHeader(Path file) {
+        ByteBuffer header = ValueCodec.allocate(DataFile.HEADER_SIZE);
+        DataFile.writeHeader(header);
+        try {
+            Files.write(file, header.array());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private int commit(TableVersions table, int base, List<PartitionMeta> partitions) {
@@ -110,7 +137,8 @@ public final class StorageEngine {
             throw new UncheckedIOException(e);
         }
 
-        TableVersions table = new TableVersions(tableName, columns, 0, List.of());
+        writeHeader(dataFile(tableName));
+        TableVersions table = new TableVersions(tableName, columns, 0, List.of(), DataFile.HEADER_SIZE);
         saveNewest(table, 0, List.of());
         tables.put(tableName, table);
 
@@ -126,7 +154,7 @@ public final class StorageEngine {
         List<Object[]> rows = readCsv(csvFilePath, table.columns());
         List<PartitionMeta> partitions = rows.isEmpty()
                 ? List.of()
-                : appendPartitions(tableName, table.columns(), rows);
+                : appendPartitions(table, rows);
 
         List<PartitionMeta> next = new ArrayList<>(base.partitions());
         next.addAll(partitions);
@@ -168,7 +196,7 @@ public final class StorageEngine {
             rowsDeleted += rows.size() - survivors.size();
             rewritten++;
             if (!survivors.isEmpty()) {
-                next.addAll(appendPartitions(tableName, columns, survivors));
+                next.addAll(appendPartitions(table, survivors));
             }
         }
         int carried = base.partitions().size() - rewritten;
@@ -200,41 +228,36 @@ public final class StorageEngine {
         return rows;
     }
 
-    private List<PartitionMeta> appendPartitions(String tableName, List<ColumnSpec> columns, List<Object[]> rows) {
-        String dataFileName = tableName + ".data";
-        try (FileChannel channel = FileChannel.open(
-                tableDirectory(tableName).resolve(dataFileName),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE)) {
-            long fileEnd = channel.size();
-            boolean newFile = fileEnd == 0;
-
-            int totalSize = newFile ? DataFile.HEADER_SIZE : 0;
-            for (Object[] row : rows) {
-                for (int c = 0; c < columns.size(); c++) {
-                    totalSize += ValueCodec.encodedSize(columns.get(c).type(), row[c]);
-                }
+    private List<PartitionMeta> appendPartitions(TableVersions table, List<Object[]> rows) {
+        List<ColumnSpec> columns = table.columns();
+        int totalSize = 0;
+        for (Object[] row : rows) {
+            for (int c = 0; c < columns.size(); c++) {
+                totalSize += ValueCodec.encodedSize(columns.get(c).type(), row[c]);
             }
+        }
 
-            ByteBuffer buffer = ValueCodec.allocate(totalSize);
-            if (newFile) {
-                DataFile.writeHeader(buffer);
-            }
-            List<PartitionMeta> partitions = encodePartitions(
-                    tableName, columns, rows, buffer, fileEnd, dataFileName);
+        long offset = table.reserve(totalSize);
+        afterReserve.run();
 
-            buffer.flip();
+        Path file = dataFile(table.name());
+        ByteBuffer buffer = ValueCodec.allocate(totalSize);
+        List<PartitionMeta> partitions = encodePartitions(
+                table.name(), columns, rows, buffer, offset, file.getFileName().toString());
+
+        buffer.flip();
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
             while (buffer.hasRemaining()) {
-                channel.write(buffer, fileEnd + buffer.position());
+                channel.write(buffer, offset + buffer.position());
             }
-            return partitions;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        return partitions;
     }
 
     private List<PartitionMeta> encodePartitions(String tableName, List<ColumnSpec> columns,
-            List<Object[]> rows, ByteBuffer buffer, long fileEnd, String dataFileName) {
+            List<Object[]> rows, ByteBuffer buffer, long offset, String dataFileName) {
         List<PartitionMeta> partitions = new ArrayList<>();
         int partitionIndex = 0;
 
@@ -260,7 +283,7 @@ public final class StorageEngine {
 
                 MinMax minMax = Summaries.compute(column.type(), values);
                 chunks.put(column.name(), new ChunkMeta(
-                        fileEnd + position, length,
+                        offset + position, length,
                         String.valueOf(minMax.min()),
                         String.valueOf(minMax.max())));
 
