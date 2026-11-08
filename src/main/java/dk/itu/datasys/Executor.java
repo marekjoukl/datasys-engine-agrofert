@@ -6,6 +6,7 @@ import static dk.itu.datasys.StorageEngine.millisSince;
 import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -70,7 +71,8 @@ public final class Executor {
                             engine.snapshot(create.tableName()).version(), millisSince(startedAt));
                 }
                 case CopyStatement copy -> {
-                    CopyResult result = engine.copyFile(copy.tableName(), copy.csvFilePath());
+                    CopyResult result = retryOnConflict(copy.tableName(),
+                            () -> engine.copyFile(copy.tableName(), copy.csvFilePath()));
                     LOGGER.debug("statement=COPY table={} rows={} partitions={} version={} durationMs={}",
                             field(copy.tableName()), result.rows(), result.partitions(),
                             result.version(), millisSince(startedAt));
@@ -87,7 +89,8 @@ public final class Executor {
                             millisSince(startedAt + output.writeNanos()), millisSince(startedAt));
                 }
                 case DeleteStatement delete -> {
-                    DeleteResult result = engine.delete(delete.tableName(), delete.where());
+                    DeleteResult result = retryOnConflict(delete.tableName(),
+                            () -> engine.delete(delete.tableName(), delete.where()));
                     LOGGER.debug("statement=DELETE table={} rowsDeleted={} partitionsRewritten={}"
                             + " partitionsCarried={} version={} durationMs={}",
                             field(delete.tableName()), result.rowsDeleted(),
@@ -102,6 +105,16 @@ public final class Executor {
                     statement.getClass().getSimpleName(), e.getClass().getSimpleName(),
                     field(e.getMessage()), millisSince(startedAt));
             throw e;
+        }
+    }
+
+    private <T> T retryOnConflict(String tableName, Supplier<T> write) {
+        try {
+            return write.get();
+        } catch (ConflictException conflict) {
+            LOGGER.info("retry table={} base={} current={}",
+                    field(tableName), conflict.base(), conflict.current());
+            return engine.withTableLock(tableName, write);
         }
     }
 

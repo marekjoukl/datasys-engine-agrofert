@@ -3,7 +3,6 @@ package dk.itu.datasys;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.OutputStream;
@@ -209,7 +208,7 @@ class LoggingIT {
     }
 
     @Test
-    void aConflictLeavesOneErrorLineWithItsBaseAndCurrentVersion(@TempDir Path dir) throws Exception {
+    void aConflictLeavesOneErrorLineThenARetryThatCommits(@TempDir Path dir) throws Exception {
         String sessionId = startSession();
         try {
             StorageEngine engine = new StorageEngine(dir, 2);
@@ -221,19 +220,26 @@ class LoggingIT {
                 winner.run("COPY trips FROM 'src/test/resources/trips.csv';");
             };
 
-            assertThrows(ConflictException.class,
-                    () -> loser.run("DELETE FROM trips WHERE city = 'Odense';"));
+            loser.run("DELETE FROM trips WHERE city = 'Odense';");
         } finally {
             MDC.clear();
         }
 
-        List<String> errors = linesFor(sessionId).stream()
+        List<String> lines = linesFor(sessionId);
+        List<String> errors = lines.stream()
                 .filter(line -> line.split(",", 7)[4].equals("ERROR"))
                 .toList();
 
-        assertEquals(1, errors.size(), linesFor(sessionId).toString());
+        assertEquals(1, errors.size(), lines.toString());
         assertTrue(errors.get(0).endsWith(",ERROR,TableVersions,conflict table=trips base=1 current=2"),
                 errors.get(0));
+        assertTrue(lines.stream().anyMatch(line -> line.endsWith(
+                        ",INFO,Executor,retry table=trips base=1 current=2")),
+                lines.toString());
+        assertTrue(messages(lines).stream().anyMatch(m -> m.startsWith(
+                        "statement=DELETE table=trips rowsDeleted=2 partitionsRewritten=2"
+                        + " partitionsCarried=6 version=3 ")),
+                messages(lines).toString());
     }
 
     @Test

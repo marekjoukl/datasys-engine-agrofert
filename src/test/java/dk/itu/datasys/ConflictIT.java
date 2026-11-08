@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -120,6 +122,57 @@ class ConflictIT {
 
         assertEquals(sorted(selectAll(tripsAfter(reference, SORTED_TRIPS, MORE_TRIPS))),
                 sorted(selectAll(engine)));
+    }
+
+    @Test
+    void aLosingDeleteRetriesThroughSqlAndCommitsAfterTheCopy(@TempDir Path dir, @TempDir Path reference)
+            throws Exception {
+        StorageEngine engine = tripsAfter(dir, SORTED_TRIPS);
+        Executor loser = new Executor(engine, discard());
+        Executor winner = new Executor(engine, discard());
+        CountDownLatch parked = new CountDownLatch(1);
+        CountDownLatch winnerDone = new CountDownLatch(1);
+        engine.beforeCommit = () -> {
+            parked.countDown();
+            await(winnerDone);
+        };
+
+        try (ExecutorService writers = Executors.newSingleThreadExecutor()) {
+            Future<?> parkedLoser = writers.submit(
+                    () -> loser.run("DELETE FROM trips WHERE city = 'Odense';"));
+            assertTrue(parked.await(TIMEOUT_SECONDS, SECONDS), "the DELETE never reached its commit");
+            engine.beforeCommit = () -> { };
+            winner.run("COPY trips FROM '" + MORE_TRIPS + "';");
+            winnerDone.countDown();
+
+            parkedLoser.get(TIMEOUT_SECONDS, SECONDS);
+        }
+
+        StorageEngine copyThenDelete = tripsAfter(reference, SORTED_TRIPS, MORE_TRIPS);
+        copyThenDelete.delete("trips", ODENSE);
+        assertEquals(3, engine.snapshot("trips").version());
+        assertEquals(sorted(selectAll(copyThenDelete)), sorted(selectAll(engine)));
+    }
+
+    @Test
+    void onlyTheRetryCommitsWhileHoldingTheTableLock(@TempDir Path dir) {
+        StorageEngine engine = tripsAfter(dir, SORTED_TRIPS);
+        Executor loser = new Executor(engine, discard());
+        Executor winner = new Executor(engine, discard());
+        List<String> commits = new ArrayList<>();
+        engine.beforeCommit = () -> {
+            engine.beforeCommit = () -> commits.add(engine.holdsTableLock("trips") ? "locked" : "unlocked");
+            winner.run("COPY trips FROM '" + MORE_TRIPS + "';");
+        };
+
+        loser.run("DELETE FROM trips WHERE city = 'Odense';");
+
+        assertEquals(List.of("unlocked", "locked"), commits, "the winner's commit, then the loser's retry");
+        assertEquals(3, engine.snapshot("trips").version());
+    }
+
+    private static PrintStream discard() {
+        return new PrintStream(OutputStream.nullOutputStream());
     }
 
     private static ConflictException parkedLoserFails(StorageEngine engine, Callable<?> loser,

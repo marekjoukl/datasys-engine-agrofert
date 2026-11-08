@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.ObjIntConsumer;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +53,19 @@ final class TableVersions {
     Snapshot snapshot() {
         int version = newest;
         return new Snapshot(name, version, partitionsByVersion.get(version));
+    }
+
+    <T> T locked(Supplier<T> work) {
+        lock.lock();
+        try {
+            return work.get();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    boolean lockedByCurrentThread() {
+        return lock.isHeldByCurrentThread();
     }
 
     int commit(int base, List<PartitionMeta> partitions, ObjIntConsumer<List<PartitionMeta>> save) {
