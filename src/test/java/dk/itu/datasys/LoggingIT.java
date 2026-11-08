@@ -2,6 +2,7 @@ package dk.itu.datasys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -11,6 +12,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,6 +48,57 @@ class LoggingIT {
                 messages(lines).toString());
         assertTrue(messages(lines).contains("table=trips partition=3 column=city min=Aalborg max=Esbjerg"),
                 messages(lines).toString());
+    }
+
+    @Test
+    void everyNewPartitionLogsWhereItsBytesStartAndHowManyThereAre(@TempDir Path dir) throws Exception {
+        List<String> partitions = messages(run(dir, "")).stream()
+                .filter(m -> m.contains(" offset="))
+                .toList();
+
+        assertEquals(4, partitions.size(), partitions.toString());
+        long expectedOffset = DataFile.HEADER_SIZE;
+        for (int i = 0; i < partitions.size(); i++) {
+            String partition = partitions.get(i);
+            assertTrue(partition.startsWith("table=trips partition=" + i + " "), partition);
+            assertEquals(expectedOffset, valueOf(partition, "offset"), partition);
+            assertEquals(2, valueOf(partition, "rows"), partition);
+            expectedOffset += valueOf(partition, "length");
+        }
+    }
+
+    @Test
+    void everyWriterLogsTheVersionItPinned(@TempDir Path dir) throws Exception {
+        List<String> messages = messages(run(dir, "DELETE FROM trips WHERE distance = 95;"));
+
+        assertTrue(messages.contains("pinned table=trips base=0"), messages.toString());
+        assertTrue(messages.contains("pinned table=trips base=1"), messages.toString());
+    }
+
+    @Test
+    void aWriterOnAFreshThreadLogsLinesThatCanBeLoadedBackIntoTheEngine(@TempDir Path dir)
+            throws Exception {
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", List.of(
+                new ColumnSpec("city", ColumnType.STRING),
+                new ColumnSpec("distance", ColumnType.LONG),
+                new ColumnSpec("price", ColumnType.DOUBLE)));
+
+        String sessionId;
+        try (ExecutorService writer = Executors.newSingleThreadExecutor()) {
+            sessionId = writer.submit(() -> {
+                engine.copyFile("trips", "src/test/resources/trips_sorted.csv");
+                return MDC.get("sessionId");
+            }).get(10, TimeUnit.SECONDS);
+        }
+
+        assertNotNull(sessionId, "the writer's thread got no session");
+        List<String> lines = linesFor(sessionId);
+        assertTrue(messages(lines).contains("pinned table=trips base=0"), messages(lines).toString());
+        for (String line : lines) {
+            Long.parseLong(line.split(",", 7)[2]);
+            Long.parseLong(line.split(",", 7)[3]);
+        }
     }
 
     @Test

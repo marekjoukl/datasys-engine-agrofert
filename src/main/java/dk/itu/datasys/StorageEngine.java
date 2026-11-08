@@ -112,6 +112,12 @@ public final class StorageEngine {
                 (committed, version) -> saveNewest(table, version, committed));
     }
 
+    private static Snapshot pin(TableVersions table) {
+        Snapshot base = table.snapshot();
+        LOGGER.debug("pinned table={} base={}", field(table.name()), base.version());
+        return base;
+    }
+
     private void saveNewest(TableVersions table, int version, List<PartitionMeta> partitions) {
         TableCatalog.save(new TableCatalog(table.name(), table.columns(), version, partitions),
                 catalogFile(table.name()));
@@ -126,6 +132,7 @@ public final class StorageEngine {
     }
 
     public void createTable(String tableName, List<ColumnSpec> columns) {
+        LoggingContext.initialise();
         long startedAt = System.nanoTime();
 
         if (columns.isEmpty()) {
@@ -158,9 +165,10 @@ public final class StorageEngine {
     }
 
     public CopyResult copyFile(String tableName, String csvFilePath) {
+        LoggingContext.initialise();
         long startedAt = System.nanoTime();
         TableVersions table = requireTable(tableName);
-        Snapshot base = table.snapshot();
+        Snapshot base = pin(table);
 
         List<Object[]> rows = readCsv(csvFilePath, table.columns());
         List<PartitionMeta> partitions = rows.isEmpty()
@@ -178,10 +186,11 @@ public final class StorageEngine {
     }
 
     public DeleteResult delete(String tableName, Optional<Predicate> where) {
+        LoggingContext.initialise();
         long startedAt = System.nanoTime();
         TableVersions table = requireTable(tableName);
         List<ColumnSpec> columns = table.columns();
-        Snapshot base = table.snapshot();
+        Snapshot base = pin(table);
 
         Optional<ColumnPredicate> predicate = where.map(p -> ColumnPredicate.of(columns, p));
         Set<PartitionMeta> rewriteSet = new HashSet<>(predicate
@@ -278,6 +287,7 @@ public final class StorageEngine {
             List<Object[]> partitionRows = rows.subList(start, end);
 
             Map<String, ChunkMeta> chunks = new LinkedHashMap<>();
+            int partitionStart = buffer.position();
 
             for (int c = 0; c < columns.size(); c++) {
                 ColumnSpec column = columns.get(c);
@@ -303,6 +313,10 @@ public final class StorageEngine {
                         field(tableName), partitionIndex, field(column.name()),
                         field(minMax.min()), field(minMax.max()));
             }
+
+            LOGGER.debug("table={} partition={} offset={} length={} rows={}",
+                    field(tableName), partitionIndex, offset + partitionStart,
+                    buffer.position() - partitionStart, partitionRows.size());
 
             partitions.add(new PartitionMeta(dataFileName, partitionRows.size(), chunks));
             partitionIndex++;
