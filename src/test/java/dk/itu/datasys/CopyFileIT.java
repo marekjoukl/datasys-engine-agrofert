@@ -204,8 +204,8 @@ class CopyFileIT {
 
         TableCatalog catalog = TableCatalog.load(dir.resolve("trips").resolve("catalog.json"));
         assertTrue(catalog.partitions().isEmpty(), "a failed copy must not register partitions");
-        assertTrue(Files.notExists(dir.resolve("trips").resolve("trips.data")),
-                "a failed copy must not leave a data file");
+        assertEquals(DataFile.HEADER_SIZE, Files.size(dir.resolve("trips").resolve("trips.data")),
+                "a failed copy must not write to the data file");
     }
 
     @Test
@@ -221,8 +221,8 @@ class CopyFileIT {
         TableCatalog catalog = TableCatalog.load(dir.resolve("trips").resolve("catalog.json"));
         assertEquals(1, catalog.version());
         assertTrue(catalog.partitions().isEmpty());
-        assertTrue(Files.notExists(dir.resolve("trips").resolve("trips.data")),
-                "an empty copy must not leave a data file");
+        assertEquals(DataFile.HEADER_SIZE, Files.size(dir.resolve("trips").resolve("trips.data")),
+                "an empty copy must not write to the data file");
 
         assertEquals(2, engine.copyFile("trips", GOLDEN_CSV).version());
     }

@@ -88,14 +88,46 @@ class StorageEngineIT {
     }
 
     @Test
-    void createTableWritesNoDataFiles(@TempDir Path dir) throws Exception {
+    void createTableWritesADataFileWithOnlyTheHeader(@TempDir Path dir) throws Exception {
         new StorageEngine(dir).createTable("trips", TRIPS);
 
         try (var entries = Files.list(dir.resolve("trips"))) {
             assertEquals(
-                    List.of("catalog.json"),
-                    entries.map(p -> p.getFileName().toString()).toList());
+                    List.of("catalog.json", "trips.data"),
+                    entries.map(p -> p.getFileName().toString()).sorted().toList());
         }
+        assertEquals(DataFile.HEADER_SIZE, Files.size(dir.resolve("trips").resolve("trips.data")));
+        DataFile.open(dir.resolve("trips").resolve("trips.data")).close();
+    }
+
+    @Test
+    void aTableWithoutADataFileGetsOneWhenLoaded(@TempDir Path dir) throws Exception {
+        new StorageEngine(dir, 2).createTable("trips", TRIPS);
+        Files.delete(dir.resolve("trips").resolve("trips.data"));
+
+        StorageEngine restarted = new StorageEngine(dir, 2);
+        restarted.copyFile("trips", "src/test/resources/trips.csv");
+
+        assertEquals(8, restarted.snapshot("trips").partitions().stream()
+                .mapToInt(partition -> restarted.readPartitionRows("trips", partition).size())
+                .sum());
+    }
+
+    @Test
+    void aRestartedEngineAppendsAfterTheBytesAlreadyInTheFile(@TempDir Path dir) throws Exception {
+        StorageEngine engine = new StorageEngine(dir, 2);
+        engine.createTable("trips", TRIPS);
+        engine.copyFile("trips", "src/test/resources/trips.csv");
+        long sizeBefore = Files.size(dir.resolve("trips").resolve("trips.data"));
+
+        StorageEngine restarted = new StorageEngine(dir, 2);
+        restarted.copyFile("trips", "src/test/resources/trips_sorted.csv");
+
+        List<PartitionMeta> partitions = restarted.snapshot("trips").partitions();
+        assertEquals(sizeBefore, partitions.get(4).chunks().get("city").offset());
+        assertEquals(16, partitions.stream()
+                .mapToInt(partition -> restarted.readPartitionRows("trips", partition).size())
+                .sum());
     }
 
     @Test

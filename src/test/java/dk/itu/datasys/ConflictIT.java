@@ -107,6 +107,21 @@ class ConflictIT {
         assertTrue(selectAll(engine).stream().noneMatch(row -> row.get(0).equals("Odense")));
     }
 
+    @Test
+    void aWriterThatReservedFirstNeverOverwritesTheBytesOfALaterWriter(@TempDir Path dir,
+            @TempDir Path reference) {
+        StorageEngine engine = tripsAfter(dir, SORTED_TRIPS);
+        engine.afterReserve = () -> {
+            engine.afterReserve = () -> { };
+            engine.copyFile("trips", MORE_TRIPS);
+        };
+
+        assertThrows(ConflictException.class, () -> engine.copyFile("trips", SORTED_TRIPS));
+
+        assertEquals(sorted(selectAll(tripsAfter(reference, SORTED_TRIPS, MORE_TRIPS))),
+                sorted(selectAll(engine)));
+    }
+
     private static ConflictException parkedLoserFails(StorageEngine engine, Callable<?> loser,
             Runnable winner) throws Exception {
         CountDownLatch parked = new CountDownLatch(1);

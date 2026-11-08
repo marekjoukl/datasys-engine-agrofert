@@ -24,7 +24,7 @@ class TableVersionsTest {
     private static final ObjIntConsumer<List<PartitionMeta>> NO_SAVE = (partitions, version) -> { };
 
     private static TableVersions created() {
-        return new TableVersions("users", COLUMNS, 0, List.of());
+        return new TableVersions("users", COLUMNS, 0, List.of(), DataFile.HEADER_SIZE);
     }
 
     @Test
@@ -133,11 +133,20 @@ class TableVersionsTest {
 
     @Test
     void aLoadedTableContinuesFromItsStoredVersion() {
-        TableVersions users = new TableVersions("users", COLUMNS, 3, List.of(P8, P113));
+        TableVersions users = new TableVersions("users", COLUMNS, 3, List.of(P8, P113), 200);
 
         assertEquals(3, users.snapshot().version());
         assertEquals(4, users.commit(3, List.of(P8), NO_SAVE));
         assertTrue(users.snapshot().partitions().contains(P8));
+    }
+
+    @Test
+    void reservationsHandOutAdjacentRangesStartingAtTheDataEnd() {
+        TableVersions users = new TableVersions("users", COLUMNS, 3, List.of(P8, P113), 200);
+
+        assertEquals(200, users.reserve(35));
+        assertEquals(235, users.reserve(18));
+        assertEquals(253, users.reserve(1));
     }
 
     private static PartitionMeta partition(long offset) {

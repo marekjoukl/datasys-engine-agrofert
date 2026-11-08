@@ -5,6 +5,7 @@ import static dk.itu.datasys.StorageEngine.field;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.ObjIntConsumer;
 
@@ -19,17 +20,25 @@ final class TableVersions {
     private final List<ColumnSpec> columns;
     private final Map<Integer, List<PartitionMeta>> partitionsByVersion = new ConcurrentHashMap<>();
     private final ReentrantLock lock = new ReentrantLock();
+    private final AtomicLong dataEnd;
     private volatile int newest;
 
-    TableVersions(String name, List<ColumnSpec> columns, int version, List<PartitionMeta> partitions) {
+    TableVersions(String name, List<ColumnSpec> columns, int version, List<PartitionMeta> partitions,
+            long dataEnd) {
         this.name = name;
         this.columns = List.copyOf(columns);
         partitionsByVersion.put(version, List.copyOf(partitions));
         newest = version;
+        this.dataEnd = new AtomicLong(dataEnd);
     }
 
-    static TableVersions from(TableCatalog catalog) {
-        return new TableVersions(catalog.name(), catalog.columns(), catalog.version(), catalog.partitions());
+    static TableVersions from(TableCatalog catalog, long dataEnd) {
+        return new TableVersions(catalog.name(), catalog.columns(), catalog.version(), catalog.partitions(),
+                dataEnd);
+    }
+
+    long reserve(int bytes) {
+        return dataEnd.getAndAdd(bytes);
     }
 
     String name() {
