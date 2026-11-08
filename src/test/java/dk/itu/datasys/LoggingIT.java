@@ -2,6 +2,7 @@ package dk.itu.datasys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.OutputStream;
@@ -150,6 +151,34 @@ class LoggingIT {
         assertEquals(1, errors.size(), linesFor(sessionId).toString());
         assertEquals("1", errors.get(0).split(",", 7)[2], errors.get(0));
         assertTrue(errors.get(0).contains("message=unknown table: nosuchtable"), errors.get(0));
+    }
+
+    @Test
+    void aConflictLeavesOneErrorLineWithItsBaseAndCurrentVersion(@TempDir Path dir) throws Exception {
+        String sessionId = startSession();
+        try {
+            StorageEngine engine = new StorageEngine(dir, 2);
+            Executor loser = new Executor(engine, discard());
+            Executor winner = new Executor(engine, discard());
+            loser.run(SETUP);
+            engine.beforeCommit = () -> {
+                engine.beforeCommit = () -> { };
+                winner.run("COPY trips FROM 'src/test/resources/trips.csv';");
+            };
+
+            assertThrows(ConflictException.class,
+                    () -> loser.run("DELETE FROM trips WHERE city = 'Odense';"));
+        } finally {
+            MDC.clear();
+        }
+
+        List<String> errors = linesFor(sessionId).stream()
+                .filter(line -> line.split(",", 7)[4].equals("ERROR"))
+                .toList();
+
+        assertEquals(1, errors.size(), linesFor(sessionId).toString());
+        assertTrue(errors.get(0).endsWith(",ERROR,TableVersions,conflict table=trips base=1 current=2"),
+                errors.get(0));
     }
 
     @Test

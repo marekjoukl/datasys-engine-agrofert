@@ -95,6 +95,8 @@ public final class Executor {
                             result.version(), millisSince(startedAt));
                 }
             }
+        } catch (ConflictException e) {
+            throw e;
         } catch (RuntimeException e) {
             LOGGER.error("statement failed type={} error={} message={} durationMs={}",
                     statement.getClass().getSimpleName(), e.getClass().getSimpleName(),
