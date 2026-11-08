@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,6 +122,14 @@ public final class StorageEngine {
     private void saveNewest(TableVersions table, int version, List<PartitionMeta> partitions) {
         TableCatalog.save(new TableCatalog(table.name(), table.columns(), version, partitions),
                 catalogFile(table.name()));
+    }
+
+    public <T> T withTableLock(String tableName, Supplier<T> work) {
+        return requireTable(tableName).locked(work);
+    }
+
+    boolean holdsTableLock(String tableName) {
+        return requireTable(tableName).lockedByCurrentThread();
     }
 
     Snapshot snapshot(String tableName) {
