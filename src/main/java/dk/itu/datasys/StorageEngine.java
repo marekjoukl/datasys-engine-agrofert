@@ -76,7 +76,7 @@ public final class StorageEngine {
     private long dataEnd(String tableName) {
         Path file = dataFile(tableName);
         try {
-            if (Files.notExists(file)) {
+            if (Files.notExists(file) || Files.size(file) < DataFile.HEADER_SIZE) {
                 writeHeader(file);
             }
             return Files.size(file);
@@ -88,8 +88,19 @@ public final class StorageEngine {
     private static void writeHeader(Path file) {
         ByteBuffer header = ValueCodec.allocate(DataFile.HEADER_SIZE);
         DataFile.writeHeader(header);
-        try {
-            Files.write(file, header.array());
+        writeAndForce(file, header.array());
+    }
+
+    static void writeAndForce(Path file, byte[] bytes) {
+        try (FileChannel channel = FileChannel.open(file,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING)) {
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
+            channel.force(true);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -250,6 +261,7 @@ public final class StorageEngine {
             while (buffer.hasRemaining()) {
                 channel.write(buffer, offset + buffer.position());
             }
+            channel.force(true);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

@@ -2,6 +2,7 @@ package dk.itu.datasys;
 
 import static dk.itu.datasys.StorageEngine.field;
 import static dk.itu.datasys.StorageEngine.millisSince;
+import static dk.itu.datasys.StorageEngine.writeAndForce;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -23,7 +24,7 @@ record TableCatalog(String name, List<ColumnSpec> columns, int version, List<Par
     static void save(TableCatalog catalog, Path file) {
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
         try {
-            MAPPER.writerWithDefaultPrettyPrinter().writeValue(tmp.toFile(), catalog);
+            writeAndForce(tmp, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsBytes(catalog));
             try {
                 Files.move(tmp, file,
                         StandardCopyOption.REPLACE_EXISTING,

@@ -114,6 +114,22 @@ class StorageEngineIT {
     }
 
     @Test
+    void aDataFileCutShortBeforeItsHeaderGetsAFreshHeaderWhenLoaded(@TempDir Path dir)
+            throws Exception {
+        new StorageEngine(dir, 2).createTable("trips", TRIPS);
+        Files.write(dir.resolve("trips").resolve("trips.data"), new byte[] {'A', 'G'});
+
+        StorageEngine restarted = new StorageEngine(dir, 2);
+        restarted.copyFile("trips", "src/test/resources/trips.csv");
+
+        assertEquals(DataFile.HEADER_SIZE,
+                restarted.snapshot("trips").partitions().get(0).chunks().get("city").offset());
+        assertEquals(8, restarted.snapshot("trips").partitions().stream()
+                .mapToInt(partition -> restarted.readPartitionRows("trips", partition).size())
+                .sum());
+    }
+
+    @Test
     void aRestartedEngineAppendsAfterTheBytesAlreadyInTheFile(@TempDir Path dir) throws Exception {
         StorageEngine engine = new StorageEngine(dir, 2);
         engine.createTable("trips", TRIPS);

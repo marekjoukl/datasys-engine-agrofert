@@ -18,6 +18,8 @@ A commit holds the table's lock and takes three steps:
 
 Saving before publishing means a failed save leaves no visible change. The writer forces its partition bytes to disk before it commits, so `catalog.json` never points at bytes that are not on disk. If a crash occurs before the commit, the new partitions are not referenced by any version and therefore invisible.
 
+We do not force the table directory after the rename. A power cut right after a commit can therefore lose the rename, and the table comes back at the version before it, never at a half-written one.
+
 ## Snapshot
 
 A snapshot pins table, version, and partitions. It holds the partition list for the version which enables the catalog to be overwritten without affecting the running statement. It is taken when the plan is built, before pruning.
