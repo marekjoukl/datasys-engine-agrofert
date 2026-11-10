@@ -1,0 +1,187 @@
+\documentclass[11pt,a4paper,twocolumn]{article}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+\fi
+\usepackage[sfdefault]{plex-sans}
+\usepackage{plex-mono}
+\usepackage[top=2cm,bottom=2.2cm,left=1.8cm,right=1.8cm,columnsep=7mm]{geometry}
+\usepackage{setspace}
+\setstretch{1.15}
+\raggedbottom
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage[font=small,labelfont=bf,justification=raggedright,singlelinecheck=false]{caption}
+\usepackage{tikz}
+\usetikzlibrary{positioning, fit, arrows.meta}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% Outline notes. Delete every \todo before handing in.
+\newcommand{\todo}[1]{{\color{red}\small[TODO: #1]}}
+
+\newcommand{\sq}{\textquotesingle}
+\newcolumntype{L}{>{\ttfamily\raggedright\arraybackslash}X}
+
+\title{Project 2 Report}
+\author{Team Agrofert: rafro@itu.dk, jouk@itu.dk\\How to Build Data Systems, Fall 2026}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+% Budget: 3 to 5 pages in total.
+% Versioning ~1 page, Conflict detection ~1 page, Reflections 1 to 3 pages.
+
+\section{Versioning}
+\label{sec:versioning}
+
+\subsection{What a version is}
+
+A version is a number together with the list of partitions that make up the table at that point. \texttt{CREATE TABLE} commits version 0, the empty table. Each \texttt{COPY} or \texttt{DELETE} that changes the table then commits the next number. A \texttt{DELETE} that matches no rows commits nothing, because the table stays the same. An empty \texttt{COPY} still commits a new version, which means every \texttt{COPY} moves the version forward.
+
+While the engine runs, \texttt{TableVersions} keeps the versions of a table in memory. A concurrent map stores the partition list of each version, and the field \texttt{newest} holds the current number. On disk, \texttt{catalog.json} holds only the newest version, with its number in the \texttt{version} field. The engine loads this file the first time a statement uses the table. After that, every commit writes it again.
+
+\subsection{Commit}
+
+A commit takes the table's lock and runs three steps. It first checks that the version the statement started from is still the newest. If another statement has committed in the meantime, the commit throws a \texttt{ConflictException} (Section~\ref{sec:conflict}). Next, the new catalog is written to \texttt{catalog.json.tmp}, forced to disk, and renamed over \texttt{catalog.json}. The last step publishes the version in memory by adding its partition list to the map and setting \texttt{newest} to the new number.
+
+The partitions themselves are written earlier, at the end of the data file, and are also forced to disk. By the time the commit runs, its only job is to write metadata. Every offset in \texttt{catalog.json} therefore points at bytes that are already on disk.
+
+The swap is atomic in both places. In memory, setting \texttt{newest} is the last step and a single assignment. A statement that reads it gets the old version or the new one, with nothing in between. On disk, atomicity comes from the rename, which POSIX guarantees to be atomic. After a crash, \texttt{catalog.json} holds one of the two complete files.
+
+We save before we publish. If the save fails, for example on a full disk, the new version has not been published yet. As a result, no statement can have read a version that would disappear after a restart. The partitions the statement already wrote become orphans that no version points at.
+
+\begin{figure*}[t]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}r>{\ttfamily}lL@{}}
+    \toprule
+    \# & logger & message \\
+    \midrule
+    1 & StorageEngine & pinned table=trips base=1 \\
+    2 & Pruner & table=trips column=distance comparison=LESS\_THAN const=20 partition=0 min=12 max=31 decision=READ \\
+    3 & Pruner & table=trips column=distance comparison=LESS\_THAN const=20 partition=1 min=88 max=95 decision=PRUNED \\
+    4 & Pruner & table=trips column=distance comparison=LESS\_THAN const=20 partition=2 min=140 max=187 decision=PRUNED \\
+    5 & Pruner & table=trips column=distance comparison=LESS\_THAN const=20 partition=3 min=210 max=299 decision=PRUNED \\
+    6 & StorageEngine & table=trips partition=0 offset=230 length=28 rows=1 \\
+    7 & Executor & statement=DELETE table=trips rowsDeleted=1 partitionsRewritten=1 partitionsCarried=3 version=2 durationMs=69 \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Log of \texttt{DELETE FROM trips WHERE distance \textless{} 20} at tag \texttt{v0.8}, with 2 rows per partition. All lines are \texttt{DEBUG}.}
+  \label{fig:delete-log}
+\end{figure*}
+
+\subsection{Snapshot and retention}
+
+A statement pins a snapshot when it starts working with a table. The snapshot holds the table name, the version, and the partition list of that version with offsets and row counts. A \texttt{SELECT} takes it while the planner builds the plan, before pruning. Pruning and the scan thus work on the same partitions. A \texttt{COPY} or \texttt{DELETE} takes it at its start, and its commit is later validated against that version.
+
+With its own partition list, the statement has no reason to read the catalog again. Other statements may commit new versions while it runs, but it keeps reading the partitions it pinned. Their bytes stay in the file because partitions are immutable.
+
+We keep every version in memory until the engine exits. A running statement cannot lose the version it pinned, since nothing is dropped during a run. That also means we do not have to track which statement uses which version. The price is memory that grows with every commit. After a restart, only the newest version from \texttt{catalog.json} is left, and that is the one every new statement pins.
+
+\subsection{Worked example: a DELETE from version 1 to 2}
+
+Table~\ref{tab:catalog-delete} shows the catalog of \texttt{trips} before and after a \texttt{DELETE} of all trips shorter than 20, with 2 rows per partition. The values that changed between the two versions are in bold. Partition 0 is the only one that can contain such a trip. Its minimum is 12, while the other partitions start at 88 (Figure~\ref{fig:delete-log}, lines 2 to 5). The surviving row, Roskilde with distance 31, is written as a new partition at byte 230, the end of the data file. Version 2 carries the other three partitions over with the same offsets as in version 1. The bytes of the old partition 0, from 6 to 63, remain in the file, but version 2 no longer points at them.
+
+\begin{table}[!htb]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{5.5pt}
+  \begin{tabular}{@{}r rrl rrl@{}}
+    \toprule
+     & \multicolumn{3}{c}{version 1} & \multicolumn{3}{c}{version 2} \\
+    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
+    \# & offset & rows & distance & offset & rows & distance \\
+    \midrule
+    0 & 6 & 2 & 12--31 & \textbf{230} & \textbf{1} & \textbf{31--31} \\
+    1 & 64 & 2 & 88--95 & 64 & 2 & 88--95 \\
+    2 & 120 & 2 & 140--187 & 120 & 2 & 140--187 \\
+    3 & 176 & 2 & 210--299 & 176 & 2 & 210--299 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Partitions of \texttt{trips} in \texttt{catalog.json} before and after \texttt{DELETE FROM trips WHERE distance \textless{} 20}. Distance is the min and max of each partition.}
+  \label{tab:catalog-delete}
+\end{table}
+
+
+\section{Conflict detection}
+\label{sec:conflict}
+
+\subsection{The interleaving}
+
+\subsection{Evidence}
+
+\begin{figure*}[t]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}r>{\ttfamily}l>{\ttfamily}r>{\ttfamily}l>{\ttfamily}lL@{}}
+    \toprule
+    \# & time & thread & level & logger & message \\
+    \midrule
+    1 & 11:22:50.388 & 36 & DEBUG & Executor & sql=DELETE FROM trips WHERE city = \sq{}Odense\sq{}; \\
+    2 & 11:22:50.388 & 36 & DEBUG & StorageEngine & pinned table=trips base=1 \\
+    3 & 11:22:50.390 & 36 & DEBUG & StorageEngine & table=trips partition=0 offset=230 length=30 rows=1 \\
+    4 & 11:22:50.395 & 3 & DEBUG & Executor & sql=COPY trips FROM \sq{}src/test/resources/trips.csv\sq{}; \\
+    5 & 11:22:50.395 & 3 & DEBUG & StorageEngine & pinned table=trips base=1 \\
+    6 & 11:22:50.396 & 3 & DEBUG & StorageEngine & table=trips partition=0 offset=260 length=56 rows=2 \\
+    7 & 11:22:50.396 & 3 & DEBUG & StorageEngine & table=trips partition=1 offset=316 length=56 rows=2 \\
+    8 & 11:22:50.396 & 3 & DEBUG & StorageEngine & table=trips partition=2 offset=372 length=55 rows=2 \\
+    9 & 11:22:50.396 & 3 & DEBUG & StorageEngine & table=trips partition=3 offset=427 length=57 rows=2 \\
+    10 & 11:22:50.403 & 3 & DEBUG & Executor & statement=COPY table=trips rows=8 partitions=4 version=2 durationMs=8 \\
+    11 & 11:22:50.403 & 36 & ERROR & TableVersions & conflict table=trips base=1 current=2 \\
+    12 & 11:22:50.404 & 36 & INFO & Executor & retry table=trips base=1 current=2 \\
+    13 & 11:22:50.404 & 36 & DEBUG & StorageEngine & pinned table=trips base=2 \\
+    14 & 11:22:50.405 & 36 & DEBUG & StorageEngine & table=trips partition=0 offset=484 length=30 rows=1 \\
+    15 & 11:22:50.409 & 36 & DEBUG & StorageEngine & table=trips partition=0 offset=514 length=30 rows=1 \\
+    16 & 11:22:50.417 & 36 & DEBUG & Executor & statement=DELETE table=trips rowsDeleted=2 partitionsRewritten=2 partitionsCarried=6 version=3 durationMs=30 \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Log of one conflict at tag \texttt{v0.8}, from the test \texttt{aLosingDeleteRetriesThroughSqlAndCommitsAfterTheCopy} in \texttt{ConflictIT}. The \texttt{sessionId} and \texttt{statementNumber} columns are left out.}
+  \label{fig:conflict-log}
+\end{figure*}
+
+\subsection{Outcome}
+
+\subsection{Resolution strategy}
+
+\section{Reflections}
+\label{sec:reflections}
+
+\subsection{The storage layer}
+
+\subsection{ACID}
+
+\subsection{The retrofit}
+
+Part 2 changed 19 files of main code, made up of 6 new classes, 12 existing ones and the grammar. Most of the work was Exercise 7, which touched 18 files, while Exercise 8 touched only 5. \texttt{StorageEngine} took the largest share, with about 235 changed lines.
+
+Three Part 1 decisions made the retrofit easier. Partitions were already immutable, so the new features could be built on top. A new version adds partitions and leaves the old ones as they are. The catalog was already written to a temporary file and renamed into place, and this rename became the atomic step of every commit. The pruning code could be reused to decide which partitions a \texttt{DELETE} rewrites, after we moved it from the planner into a shared helper.
+
+Two Part 1 decisions got in the way. The catalog stored a flag \texttt{copied}, which allowed only one \texttt{COPY} per table. We had to change the catalog format and replace the flag with a version number. The scan also had to be refactored. In Part 1 the planner passed it partition numbers, which it looked up in the catalog while reading. Now it receives the partition list of the version it pinned, and a commit during the scan cannot change what it reads.
+
+Keeping one data file per table had a cost as well. Two writers can append to the same file at the same time and overwrite each other's bytes, which is why Exercise 8 needed the \texttt{AtomicLong} byte reservation. With one file per partition this race would not exist. It is a tradeoff, though, because a single file per table spares us from managing many small files and cleaning them up.
+
+Overall, the retrofit was significant. It touched almost half of our classes, with the deepest changes in \texttt{StorageEngine}, the catalog format and the scan path. Designing versioning in from week 1 would have saved some of this work. AI, however, had a huge impact on the refactor and made it fast, which kept the retrofit manageable.
+
+% Numbers, Part 2 only (base 5f91f14 = last Part 1 fix, before Exercise 7):
+%   git diff --shortstat 5f91f14 v0.8 -- src/main        19 files, +431 -127
+%   git diff --name-status 5f91f14 v0.8 -- src/main      6 new (A), 13 changed (M) = 12 classes + grammar
+%   git diff --stat 5f91f14 v0.8 -- src/main             StorageEngine biggest, ~235 lines
+%   git diff --stat 5f91f14 v0.7 -- src/main             Exercise 7: 18 files
+%   git diff --stat v0.7 v0.8 -- src/main                Exercise 8: 5 files
+%   git diff --shortstat 5f91f14 v0.8 -- src/test        13 files, +945 -27
+%   git diff --name-status 5f91f14 v0.8 -- src/test      3 new test classes
+
+\subsection{AI usage}
+
+Our approach to AI stayed mostly the same as in Project 1. The biggest help this time was speed. AI found bugs quickly, explained code we did not understand yet, and reviewed our changes. It also generated the evidence for this report, the conflict log and the catalog before and after a \texttt{DELETE}, and helped with formatting the report.
+
+\end{document}
