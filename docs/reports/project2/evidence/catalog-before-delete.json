@@ -1,0 +1,107 @@
+{
+  "name" : "trips",
+  "columns" : [ {
+    "name" : "city",
+    "type" : "STRING"
+  }, {
+    "name" : "distance",
+    "type" : "LONG"
+  }, {
+    "name" : "price",
+    "type" : "DOUBLE"
+  } ],
+  "version" : 1,
+  "partitions" : [ {
+    "file" : "trips.data",
+    "rowCount" : 2,
+    "chunks" : {
+      "city" : {
+        "offset" : 6,
+        "length" : 26,
+        "min" : "Copenhagen",
+        "max" : "Roskilde"
+      },
+      "distance" : {
+        "offset" : 32,
+        "length" : 16,
+        "min" : "12",
+        "max" : "31"
+      },
+      "price" : {
+        "offset" : 48,
+        "length" : 16,
+        "min" : "23.5",
+        "max" : "45.0"
+      }
+    }
+  }, {
+    "file" : "trips.data",
+    "rowCount" : 2,
+    "chunks" : {
+      "city" : {
+        "offset" : 64,
+        "length" : 24,
+        "min" : "Copenhagen",
+        "max" : "Odense"
+      },
+      "distance" : {
+        "offset" : 88,
+        "length" : 16,
+        "min" : "88",
+        "max" : "95"
+      },
+      "price" : {
+        "offset" : 104,
+        "length" : 16,
+        "min" : "99.99",
+        "max" : "120.75"
+      }
+    }
+  }, {
+    "file" : "trips.data",
+    "rowCount" : 2,
+    "chunks" : {
+      "city" : {
+        "offset" : 120,
+        "length" : 24,
+        "min" : "Aarhus",
+        "max" : "Copenhagen"
+      },
+      "distance" : {
+        "offset" : 144,
+        "length" : 16,
+        "min" : "140",
+        "max" : "187"
+      },
+      "price" : {
+        "offset" : 160,
+        "length" : 16,
+        "min" : "210.0",
+        "max" : "301.0"
+      }
+    }
+  }, {
+    "file" : "trips.data",
+    "rowCount" : 2,
+    "chunks" : {
+      "city" : {
+        "offset" : 176,
+        "length" : 22,
+        "min" : "Aalborg",
+        "max" : "Esbjerg"
+      },
+      "distance" : {
+        "offset" : 198,
+        "length" : 16,
+        "min" : "210",
+        "max" : "299"
+      },
+      "price" : {
+        "offset" : 214,
+        "length" : 16,
+        "min" : "340.5",
+        "max" : "450.25"
+      }
+    }
+  } ]
+}

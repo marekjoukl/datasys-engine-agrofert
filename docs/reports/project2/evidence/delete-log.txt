@@ -1,0 +1,7 @@
+DEBUG StorageEngine - pinned table=trips base=1
+DEBUG Pruner - table=trips column=distance comparison=LESS_THAN const=20 partition=0 min=12 max=31 decision=READ
+DEBUG Pruner - table=trips column=distance comparison=LESS_THAN const=20 partition=1 min=88 max=95 decision=PRUNED
+DEBUG Pruner - table=trips column=distance comparison=LESS_THAN const=20 partition=2 min=140 max=187 decision=PRUNED
+DEBUG Pruner - table=trips column=distance comparison=LESS_THAN const=20 partition=3 min=210 max=299 decision=PRUNED
+DEBUG StorageEngine - table=trips partition=0 offset=230 length=28 rows=1
+DEBUG Executor - statement=DELETE table=trips rowsDeleted=1 partitionsRewritten=1 partitionsCarried=3 version=2 durationMs=69
