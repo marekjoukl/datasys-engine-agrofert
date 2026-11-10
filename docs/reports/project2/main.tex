@@ -163,7 +163,7 @@ Table~\ref{tab:catalog-delete} shows the catalog of \texttt{trips} before and af
 
 Part 2 changed 19 files of main code, made up of 6 new classes, 12 existing ones and the grammar. Most of the work was Exercise 7, which touched 18 files, while Exercise 8 touched only 5. \texttt{StorageEngine} took the largest share, with about 235 changed lines.
 
-Three Part 1 decisions made the retrofit easier. Partitions were already immutable, so the new features could be built on top. A new version adds partitions and leaves the old ones as they are. The catalog was already written to a temporary file and renamed into place, and this rename became the atomic step of every commit. The pruning code could be reused to decide which partitions a \texttt{DELETE} rewrites, after we moved it from the planner into a shared helper.
+Three things from Part 1 made the retrofit easier. Partitions were immutable from the start, so the new features could be built on top. A new version adds partitions and leaves the old ones as they are. The catalog was already written to a temporary file and renamed into place, and this rename became the atomic step of every commit. The pruning code could be reused to decide which partitions a \texttt{DELETE} rewrites, after we moved it from the planner into a shared helper.
 
 Two Part 1 decisions got in the way. The catalog stored a flag \texttt{copied}, which allowed only one \texttt{COPY} per table. We had to change the catalog format and replace the flag with a version number. The scan also had to be refactored. In Part 1 the planner passed it partition numbers, which it looked up in the catalog while reading. Now it receives the partition list of the version it pinned, and a commit during the scan cannot change what it reads.
 
