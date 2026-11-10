@@ -22,11 +22,11 @@ We do not force the table directory after the rename. A power cut right after a 
 
 ## Snapshot
 
-A snapshot pins table, version, and partitions. It holds the partition list for the version which enables the catalog to be overwritten without affecting the running statement. It is taken when the plan is built, before pruning.
+A snapshot pins table, version, and partitions. It holds the partition list for the version which enables the catalog to be overwritten without affecting the running statement. A `SELECT` takes it when the plan is built, before pruning. A `COPY` or `DELETE` takes it when the statement starts, and its commit uses that version as the base.
 
 ## Retention
 
-We keep every version in memory until the engine exits. The `catalog.json` always keeps the newest version. Since no version is dropped during a run, the engine never needs to track which statements still use one. After a restart only the newest version exists, and new statements always pin the newest version, so a missing version cannot be requested. If it happens anyway, the engine throws an `IllegalStateException`.
+We keep every version in memory until the engine exits. The `catalog.json` always keeps the newest version. Since no version is dropped during a run, the engine never needs to track which statements still use one. After a restart only the newest version exists, and new statements always pin the newest version, so a missing version cannot be requested.
 
 ## The rewrite set
 
