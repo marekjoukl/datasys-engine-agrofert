@@ -116,7 +116,11 @@ Table~\ref{tab:catalog-delete} shows the catalog of \texttt{trips} before and af
 
 \subsection{The interleaving}
 
+Both writers start from version 1: the \texttt{DELETE} on thread 36 (line 2) and the \texttt{COPY} on thread 3 (line 5). The \texttt{DELETE} starts first, but the \texttt{COPY} commits first, as version 2 (line 10).
+
 \subsection{Evidence}
+
+The \texttt{threadId} column tells the two writers apart. On line 3 the \texttt{DELETE} writes its surviving row, 30 bytes at offset 230. Lines 4 to 10 are the whole \texttt{COPY}. On line 11 the \texttt{DELETE} reaches its commit, finds version 2 instead of 1, and logs the conflict as an \texttt{ERROR}. Line 12 starts the retry, which holds the table lock. The retry starts from version 2 (line 13), rewrites two partitions (lines 14 and 15) and commits version 3 (line 16). Both rewrites say \texttt{partition=0} because each one counts its partitions from 0.
 
 \begin{figure*}[t]
   \centering
@@ -150,14 +154,38 @@ Table~\ref{tab:catalog-delete} shows the catalog of \texttt{trips} before and af
 
 \subsection{Outcome}
 
+The commit compares only two numbers: the version the \texttt{DELETE} started from (1) and the newest version (2). They differ, so it is a conflict. This is the strict rule: any commit in between counts.
+
+The data itself did not clash. The \texttt{DELETE} only rewrote the partition that holds Odense, and the \texttt{COPY} only added new partitions. Doing both on version 1 would give the same rows as running the \texttt{DELETE} and then the \texttt{COPY}. The conflict was declared to be safe, not because it was needed.
+
+The \texttt{COPY} wins. The \texttt{DELETE} leaves its 30 bytes at offset 230 behind, and since no version points at them, they are an orphan in \texttt{trips.data}. The retry starts from version 2, which also holds the Odense trip of the \texttt{COPY}, so it deletes two rows and commits version 3.
+
 \subsection{Resolution strategy}
+
+Our strategy is optimistic and strict, with one locked retry, like Snowflake. A writer works without a lock and only checks for a conflict when it commits. On a conflict, \texttt{StorageEngine} throws a \texttt{ConflictException}, and the \texttt{Executor} runs the statement once more while holding the table lock. Every commit needs that lock, so the retry cannot lose again.
+
+A rebase would waste less work. On a conflict, the commit would check whether the other writer replaced any of the same partitions. If not, it would take the newest partition list, swap out the partitions it replaced, and add its new ones. Here the \texttt{DELETE} would commit on its first try. Lines 11 to 15 would disappear, the 30 bytes at offset 230 would not be wasted, and line 16 would report \texttt{rowsDeleted=1 partitionsRewritten=1}. The result would match running the \texttt{DELETE} before the \texttt{COPY}, so the Odense trip from the \texttt{COPY} would stay: 15 rows instead of 14.
+
+The cost is a more complex commit. It would need the partitions the writer removed and added instead of one full list, and the tests that expect a conflict would have to change. A bug in combining the lists could bring back deleted rows or duplicate rows. Statements would also no longer appear to run in the order they commit.
 
 \section{Reflections}
 \label{sec:reflections}
 
 \subsection{The storage layer}
 
+Concurrent writers changed three things. A writer now reserves its bytes with an \texttt{AtomicLong} instead of using \texttt{channel.size()} as its offset, so two writers never write to the same place. Because of that, \texttt{CREATE TABLE} now writes the file header. Every append and every catalog write is also forced to disk. This costs extra syncs, one of them inside the table lock, and aborted attempts leave orphans in a data file that only grows.
+
+The surprise was the append race, and mainly that our tests would not have found it. Since Exercise 7, a writer measured the size of the data file and wrote at that offset. Two writers can measure the same size, and the later write can overwrite partitions the other one has already committed. All required tests passed with this bug, because the hook parks a writer after it has appended. We only learned about it because Claude Code pointed it out while reviewing the code. Testing the fix needed a second hook, between reserving the bytes and writing them.
+
 \subsection{ACID}
+
+A statement is atomic. Its change becomes visible only through the catalog rename on disk and one assignment of \texttt{newest} in memory, so other statements see all of it or nothing.
+
+Consistency holds only in a narrow sense. The engine checks the schema, the column types and the number of fields per row, and nothing more.
+
+Isolation is approximate. In one process, a reader uses its pinned snapshot, and commits are checked one at a time against the writer's base version. Two \texttt{./engine} processes on the same data directory do not see each other's versions, so there is no isolation between them.
+
+Durability is approximate too. A commit survives a crash of the process, but a power cut can lose the last rename, because the table directory is not forced.
 
 \subsection{The retrofit}
 
