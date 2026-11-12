@@ -175,7 +175,7 @@ The cost is a more complex commit. It would need the partitions the writer remov
 
 Concurrent writers changed three things. A writer now reserves its bytes with an \texttt{AtomicLong} instead of using \texttt{channel.size()} as its offset, so two writers never write to the same place. Because of that, \texttt{CREATE TABLE} now writes the file header. Every append and every catalog write is also forced to disk. This costs extra syncs, one of them inside the table lock, and aborted attempts leave orphans in a data file that only grows.
 
-The surprise was the append race, and mainly that our tests would not have found it. Since Exercise 7, a writer measured the size of the data file and wrote at that offset. Two writers can measure the same size, and the later write can overwrite partitions the other one has already committed. All required tests passed with this bug, because the hook parks a writer after it has appended. We only learned about it because Claude Code pointed it out while reviewing the code. Testing the fix needed a second hook, between reserving the bytes and writing them.
+The surprise was the append race, and mainly that our tests did not find it. Since Exercise 7, a writer read the size of the data file and wrote its partitions at that offset. Two writers could read the same size, and the later one would then overwrite partitions the other had already committed. All required tests passed with this bug in the code. Their hook parks a writer only after it has appended, so the two appends never overlapped. We fixed the race with the \texttt{AtomicLong} reservation and added a second hook, between reserving the bytes and writing them, to test the fix.
 
 \subsection{ACID}
 
