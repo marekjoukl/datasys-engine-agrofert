@@ -162,7 +162,7 @@ The \texttt{COPY} wins. The \texttt{DELETE} leaves its 30 bytes at offset 230 be
 
 \subsection{Resolution strategy}
 
-Our strategy is optimistic and strict, with one locked retry, like Snowflake. A writer works without a lock and only checks for a conflict when it commits. On a conflict, \texttt{StorageEngine} throws a \texttt{ConflictException}, and the \texttt{Executor} runs the statement once more while holding the table lock. Every commit needs that lock, so the retry cannot lose again.
+Our strategy is optimistic and strict. After a conflict, the statement runs once more with the table locked, like in Snowflake. A writer works without a lock and only checks for a conflict when it commits. On a conflict, \texttt{StorageEngine} throws a \texttt{ConflictException}, and the \texttt{Executor} runs the statement once more while holding the table lock. Every commit needs that lock, so the retry cannot lose again.
 
 A rebase would waste less work. On a conflict, the commit would check whether the other writer replaced any of the same partitions. If not, it would take the newest partition list, swap out the partitions it replaced, and add its new ones. Here the \texttt{DELETE} would commit on its first try. Lines 11 to 15 would disappear, the 30 bytes at offset 230 would not be wasted, and line 16 would report \texttt{rowsDeleted=1 partitionsRewritten=1}. The result would match running the \texttt{DELETE} before the \texttt{COPY}, so the Odense trip from the \texttt{COPY} would stay: 15 rows instead of 14.
 
