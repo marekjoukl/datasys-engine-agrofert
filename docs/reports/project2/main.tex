@@ -21,9 +21,6 @@
 \usepackage{xcolor}
 \usepackage{hyperref}
 
-% Outline notes. Delete every \todo before handing in.
-\newcommand{\todo}[1]{{\color{red}\small[TODO: #1]}}
-
 \newcommand{\sq}{\textquotesingle}
 \newcolumntype{L}{>{\ttfamily\raggedright\arraybackslash}X}
 
@@ -156,13 +153,13 @@ The \texttt{threadId} column tells the two writers apart. On line 3 the \texttt{
 
 The commit compares only two numbers: the version the \texttt{DELETE} started from (1) and the newest version (2). They differ, so it is a conflict. This is the strict rule: any commit in between counts.
 
-The data itself did not clash. The \texttt{DELETE} only rewrote the partition that holds Odense, and the \texttt{COPY} only added new partitions. Doing both on version 1 would give the same rows as running the \texttt{DELETE} and then the \texttt{COPY}. The conflict was declared to be safe, not because it was needed.
+The data itself did not clash. The \texttt{DELETE} only rewrote the partition that holds Odense, and the \texttt{COPY} only added new partitions. Doing both on version 1 would give the same rows as running the \texttt{DELETE} and then the \texttt{COPY}. The engine declared a conflict to be on the safe side, not because one was needed.
 
 The \texttt{COPY} wins. The \texttt{DELETE} leaves its 30 bytes at offset 230 behind, and since no version points at them, they are an orphan in \texttt{trips.data}. The retry starts from version 2, which also holds the Odense trip of the \texttt{COPY}, so it deletes two rows and commits version 3.
 
 \subsection{Resolution strategy}
 
-Our strategy is optimistic and strict. After a conflict, the statement runs once more with the table locked, like in Snowflake. A writer works without a lock and only checks for a conflict when it commits. On a conflict, \texttt{StorageEngine} throws a \texttt{ConflictException}, and the \texttt{Executor} runs the statement once more while holding the table lock. Every commit needs that lock, so the retry cannot lose again.
+Our strategy is optimistic and strict, with one locked retry. A writer works without a lock and only checks for a conflict when it commits. On a conflict, \texttt{StorageEngine} throws a \texttt{ConflictException}, and the \texttt{Executor} runs the statement once more while holding the table lock. Every commit needs that lock, so the retry cannot lose again. Snowflake retries the same way, but it only sees a conflict when two commits replace the same files, so it would have committed both of our statements.
 
 A rebase would waste less work. On a conflict, the commit would check whether the other writer replaced any of the same partitions. If not, it would take the newest partition list, swap out the partitions it replaced, and add its new ones. Here the \texttt{DELETE} would commit on its first try. Lines 11 to 15 would disappear, the 30 bytes at offset 230 would not be wasted, and line 16 would report \texttt{rowsDeleted=1 partitionsRewritten=1}. The result would match running the \texttt{DELETE} before the \texttt{COPY}, so the Odense trip from the \texttt{COPY} would stay: 15 rows instead of 14.
 
@@ -186,6 +183,8 @@ Consistency holds only in a narrow sense. The engine checks the schema, the colu
 Isolation is approximate. In one process, a reader uses its pinned snapshot, and commits are checked one at a time against the writer's base version. Two \texttt{./engine} processes on the same data directory do not see each other's versions, so there is no isolation between them.
 
 Durability is approximate too. A commit survives a crash of the process, but a power cut can lose the last rename, because the table directory is not forced.
+
+No property is missing completely, although between two processes there is no isolation at all.
 
 \subsection{The retrofit}
 
