@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -71,7 +70,7 @@ class PlannerIT {
 
     @Test
     void noWhereClauseProducesABareScanOverEveryPartition(@TempDir Path dir) {
-        Plan plan = new Planner(copy(dir)).plan(new SelectStatement("trips", Optional.empty()));
+        Plan plan = new Planner(copy(dir)).plan(new SelectStatement(List.of("trips"), List.of(), List.of()));
 
         assertInstanceOf(ScanOperator.class, plan.root());
         assertEquals(new ScanStats(4, 4, 0), plan.scanStats());
@@ -82,14 +81,14 @@ class PlannerIT {
     void aPlanKeepsReadingTheVersionItPinnedAfterALaterCopy(@TempDir Path dir) {
         StorageEngine engine = copy(dir);
         Planner planner = new Planner(engine);
-        Plan pinned = planner.plan(new SelectStatement("trips", Optional.empty()));
+        Plan pinned = planner.plan(new SelectStatement(List.of("trips"), List.of(), List.of()));
 
         engine.copyFile("trips", SORTED_CSV);
 
         assertEquals(1, pinned.version());
         assertEquals(8, drain(pinned.root()).size(), "the second copy is not visible to this plan");
 
-        Plan fresh = planner.plan(new SelectStatement("trips", Optional.empty()));
+        Plan fresh = planner.plan(new SelectStatement(List.of("trips"), List.of(), List.of()));
         assertEquals(2, fresh.version());
         assertEquals(16, drain(fresh.root()).size());
     }
@@ -97,8 +96,8 @@ class PlannerIT {
     @Test
     void pruningDecidesOnThePinnedVersion(@TempDir Path dir) {
         StorageEngine engine = copy(dir);
-        Plan pinned = new Planner(engine).plan(new SelectStatement("trips",
-                Optional.of(new Predicate("distance", Comparison.GREATER_THAN, 100L))));
+        Plan pinned = new Planner(engine).plan(new SelectStatement(List.of("trips"),
+                List.of(new Predicate("distance", Comparison.GREATER_THAN, 100L)), List.of()));
 
         engine.copyFile("trips", SORTED_CSV);
 
@@ -111,21 +110,21 @@ class PlannerIT {
         Planner planner = new Planner(copy(dir));
 
         assertThrows(IllegalArgumentException.class,
-                () -> planner.plan(new SelectStatement("nope", Optional.empty())));
+                () -> planner.plan(new SelectStatement(List.of("nope"), List.of(), List.of())));
     }
 
     @Test
     void rejectsAnUnknownColumn(@TempDir Path dir) {
         Planner planner = new Planner(copy(dir));
-        SelectStatement select = new SelectStatement("trips",
-                Optional.of(new Predicate("nope", Comparison.EQUALS, 1L)));
+        SelectStatement select = new SelectStatement(List.of("trips"),
+                List.of(new Predicate("nope", Comparison.EQUALS, 1L)), List.of());
 
         assertThrows(IllegalArgumentException.class, () -> planner.plan(select));
     }
 
     private static Plan planWhere(Path dir, String column, Comparison comparison, Object constant) {
-        return new Planner(copy(dir)).plan(new SelectStatement("trips",
-                Optional.of(new Predicate(column, comparison, constant))));
+        return new Planner(copy(dir)).plan(new SelectStatement(List.of("trips"),
+                List.of(new Predicate(column, comparison, constant)), List.of()));
     }
 
     private static StorageEngine copy(Path dir) {

@@ -13,7 +13,7 @@ public final class Planner {
     }
 
     public Plan plan(SelectStatement select) {
-        String tableName = select.tableName();
+        String tableName = select.tableNames().get(0);
         List <ColumnSpec> schema = engine.schema(tableName);
         Snapshot snapshot = engine.snapshot(tableName);
         int total = snapshot.partitions().size();
@@ -21,11 +21,11 @@ public final class Planner {
         List<PartitionMeta> partitions;
         Operator root;
 
-        if (select.where().isEmpty()) {
+        if (select.filters().isEmpty()) {
             partitions = snapshot.partitions();
             root = new ScanOperator(engine, tableName, partitions);
         } else {
-            ColumnPredicate predicate = ColumnPredicate.of(schema, select.where().get());
+            ColumnPredicate predicate = ColumnPredicate.of(schema, select.filters().get(0));
             partitions = Pruner.partitionsThatMayMatch(snapshot, schema, predicate);
             root = new FilterOperator(new ScanOperator(engine, tableName, partitions), predicate);
         }

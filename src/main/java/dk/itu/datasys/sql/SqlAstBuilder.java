@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
 import dk.itu.datasys.ColumnSpec;
 import dk.itu.datasys.ColumnType;
@@ -56,25 +57,43 @@ final class SqlAstBuilder extends SqlBaseVisitor<Object> {
 
     @Override
     public Object visitSelect(SqlParser.SelectContext ctx) {
-        Optional<Predicate> where = ctx.predicate() == null
-                ? Optional.empty()
-                : Optional.of((Predicate) visit(ctx.predicate()));
-        return new SelectStatement(ctx.IDENTIFIER().getText(), where);
+        List<String> tables = new ArrayList<>();
+        for (TerminalNode table : ctx.IDENTIFIER()) {
+            tables.add(table.getText());
+        }
+
+        List<Predicate> filters = new ArrayList<>();
+        List<JoinPredicate> joins = new ArrayList<>();
+        if (ctx.condition() != null) {
+            for (SqlParser.PredicateContext predicate : ctx.condition().predicate()) {
+                if (predicate.filter() != null) {
+                    filters.add((Predicate) visit(predicate.filter()));
+                } else {
+                    joins.add((JoinPredicate) visit(predicate.join()));
+                }
+            }
+        }
+        return new SelectStatement(List.copyOf(tables), List.copyOf(filters), List.copyOf(joins));
     }
 
     @Override
     public Object visitDelete(SqlParser.DeleteContext ctx) {
-        Optional<Predicate> where = ctx.predicate() == null
+        Optional<Predicate> where = ctx.filter() == null
                 ? Optional.empty()
-                : Optional.of((Predicate) visit(ctx.predicate()));
+                : Optional.of((Predicate) visit(ctx.filter()));
         return new DeleteStatement(ctx.IDENTIFIER().getText(), where);
     }
 
     @Override
-    public Object visitPredicate(SqlParser.PredicateContext ctx) {
+    public Object visitFilter(SqlParser.FilterContext ctx) {
         return new Predicate(ctx.IDENTIFIER().getText(),
                 comparison(ctx.comparison.getText()),
                 visit(ctx.literal()));
+    }
+
+    @Override
+    public Object visitJoin(SqlParser.JoinContext ctx) {
+        return new JoinPredicate(ctx.left.getText(), ctx.right.getText());
     }
 
     @Override

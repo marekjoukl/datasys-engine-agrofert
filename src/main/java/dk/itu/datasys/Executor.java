@@ -83,7 +83,7 @@ public final class Executor {
 
                     LOGGER.debug("statement=SELECT table={} rowsOut={} partitionsRead={}"
                             + " partitionsPruned={} version={} queryMs={} durationMs={}",
-                            field(select.tableName()), output.rowsOut(),
+                            field(select.tableNames().get(0)), output.rowsOut(),
                             plan.scanStats().partitionsRead(), plan.scanStats().partitionsPruned(),
                             plan.version(),
                             millisSince(startedAt + output.writeNanos()), millisSince(startedAt));
