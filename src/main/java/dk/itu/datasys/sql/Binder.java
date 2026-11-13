@@ -18,7 +18,7 @@ public final class Binder {
         switch (s) {
             case CreateTableStatement create -> bindCreateTable(create);
             case CopyStatement copy -> bindCopy(copy);
-            case SelectStatement select -> bindWhere(select.tableName(), select.where());
+            case SelectStatement select -> bindWhere(select.tableNames().get(0), select.filters().stream().findFirst());
             case DeleteStatement delete -> bindWhere(delete.tableName(), delete.where());
         }
     }

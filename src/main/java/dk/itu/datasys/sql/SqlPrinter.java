@@ -30,8 +30,16 @@ public final class SqlPrinter {
         return "COPY " + copy.tableName() + " FROM '" + copy.csvFilePath() + "';";
     }
 
-    private static String printSelect(SelectStatement select){
-        return "SELECT * FROM " + select.tableName() + where(select.where()) + ";";
+    private static String printSelect(SelectStatement select) {
+        List<String> conditions = new ArrayList<>();
+        for (Predicate predicate : select.filters()) {
+            conditions.add(filter(predicate));
+        }
+        for (JoinPredicate join : select.joins()) {
+            conditions.add(join.leftColumn() + " = " + join.rightColumn());
+        }
+        String where = conditions.isEmpty() ? "" : " WHERE " + String.join(" AND ", conditions);
+        return "SELECT * FROM " + String.join(", ", select.tableNames()) + where + ";";
     }
 
     private static String printDelete(DeleteStatement delete) {
@@ -39,13 +47,14 @@ public final class SqlPrinter {
     }
 
     private static String where(Optional<Predicate> where) {
-        if (where.isEmpty()) {
-            return "";
-        }
-        Predicate predicate = where.get();
-        return " WHERE " + predicate.columnName() + " " + symbol(predicate.comparison())
+        return where.map(predicate -> " WHERE " + filter(predicate)).orElse("");
+    }
+
+    private static String filter(Predicate predicate) {
+        return predicate.columnName() + " " + symbol(predicate.comparison())
                 + " " + literal(predicate.constant());
     }
+
     private static String symbol(Comparison comparison) {
         return switch (comparison) {
             case EQUALS -> "=";

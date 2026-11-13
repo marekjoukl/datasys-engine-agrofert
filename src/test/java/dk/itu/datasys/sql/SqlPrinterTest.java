@@ -38,7 +38,16 @@ class SqlPrinterTest {
     @Test
     void printsSelectWithoutAWhereClause() {
         assertEquals("SELECT * FROM trips;",
-                PRINTER.print(new SelectStatement("trips", Optional.empty())));
+                PRINTER.print(new SelectStatement(List.of("trips"), List.of(), List.of())));
+    }
+
+    @Test
+    void printsATableListAndFiltersBeforeJoins() {
+        assertEquals("SELECT * FROM orders, customers"
+                        + " WHERE c_city = 'Copenhagen' AND o_custname = c_name;",
+                PRINTER.print(new SelectStatement(List.of("orders", "customers"),
+                        List.of(new Predicate("c_city", Comparison.EQUALS, "Copenhagen")),
+                        List.of(new JoinPredicate("o_custname", "c_name")))));
     }
 
     @Test
@@ -74,10 +83,18 @@ class SqlPrinterTest {
                         new ColumnSpec("distance", ColumnType.LONG),
                         new ColumnSpec("price", ColumnType.DOUBLE))),
                 new CopyStatement("trips", "data/trips-2026.csv"),
-                new SelectStatement("trips", Optional.empty()),
+                new SelectStatement(List.of("trips"), List.of(), List.of()),
                 select(Comparison.EQUALS, "Odense"),
                 select(Comparison.LESS_THAN, -12L),
                 select(Comparison.GREATER_THAN, 99.99),
+                new SelectStatement(List.of("orders", "customers"), List.of(),
+                        List.of(new JoinPredicate("o_custname", "c_name"))),
+                new SelectStatement(List.of("orders", "customers", "products", "cities"),
+                        List.of(new Predicate("c_city", Comparison.EQUALS, "Copenhagen"),
+                                new Predicate("o_quantity", Comparison.GREATER_THAN, 1L)),
+                        List.of(new JoinPredicate("o_custname", "c_name"),
+                                new JoinPredicate("o_prodname", "p_name"),
+                                new JoinPredicate("c_city", "ct_city"))),
                 new DeleteStatement("trips", Optional.empty()),
                 new DeleteStatement("trips", Optional.of(
                         new Predicate("distance", Comparison.LESS_THAN, 50L))));
@@ -128,7 +145,7 @@ class SqlPrinterTest {
     }
 
     private static SelectStatement select(Comparison comparison, Object constant) {
-        return new SelectStatement("trips",
-                Optional.of(new Predicate("distance", comparison, constant)));
+        return new SelectStatement(List.of("trips"),
+                List.of(new Predicate("distance", comparison, constant)), List.of());
     }
 }

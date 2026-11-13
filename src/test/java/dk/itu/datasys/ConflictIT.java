@@ -46,7 +46,7 @@ class ConflictIT {
     void aScanOpenedBeforeADeleteReturnsThePinnedRows(@TempDir Path dir) {
         StorageEngine engine = tripsAfter(dir, SORTED_TRIPS);
         List<List<Object>> pinnedRows = selectAll(engine);
-        Operator scan = new Planner(engine).plan(new SelectStatement("trips", Optional.empty())).root();
+        Operator scan = new Planner(engine).plan(new SelectStatement(List.of("trips"), List.of(), List.of())).root();
 
         scan.open();
         engine.delete("trips", ODENSE);
@@ -218,7 +218,7 @@ class ConflictIT {
     }
 
     private static List<List<Object>> selectAll(StorageEngine engine) {
-        Operator scan = new Planner(engine).plan(new SelectStatement("trips", Optional.empty())).root();
+        Operator scan = new Planner(engine).plan(new SelectStatement(List.of("trips"), List.of(), List.of())).root();
         scan.open();
         return drainOpened(scan);
     }

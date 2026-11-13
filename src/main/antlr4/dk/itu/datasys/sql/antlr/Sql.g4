@@ -11,16 +11,20 @@ columnType  : STRING | LONG | DOUBLE ;
 
 copy        : COPY IDENTIFIER FROM STRING_LITERAL ;
 
-select      : SELECT '*' FROM IDENTIFIER (WHERE predicate)? ;
-delete      : DELETE FROM IDENTIFIER (WHERE predicate)? ;
-predicate   : IDENTIFIER comparison=('=' | '<' | '>') literal ;
-literal     : STRING_LITERAL | LONG_LITERAL | DOUBLE_LITERAL ;
+select    : SELECT '*' FROM IDENTIFIER (',' IDENTIFIER)* (WHERE condition)? ;
+delete    : DELETE FROM IDENTIFIER (WHERE filter)? ;
+condition : predicate (AND predicate)* ;
+predicate : filter | join ;
+filter    : IDENTIFIER comparison=('=' | '<' | '>') literal ;
+join      : left=IDENTIFIER '=' right=IDENTIFIER ;
+literal   : STRING_LITERAL | LONG_LITERAL | DOUBLE_LITERAL ;
 
 // Lexer. Keyword rules MUST precede IDENTIFIER, or IDENTIFIER swallows them.
 CREATE : 'CREATE' ;   TABLE : 'TABLE' ;   COPY : 'COPY' ;   FROM : 'FROM' ;
 SELECT : 'SELECT' ;   WHERE : 'WHERE' ;   DELETE : 'DELETE' ;
 STRING : 'STRING' ;   LONG : 'LONG' ;   DOUBLE : 'DOUBLE' ;
 
+AND : 'AND' ;
 IDENTIFIER      : [A-Z_] [A-Z_0-9]* ;        // caseInsensitive covers a–z
 LONG_LITERAL    : '-'? [0-9]+ ;
 DOUBLE_LITERAL  : '-'? [0-9]+ '.' [0-9]+ ;

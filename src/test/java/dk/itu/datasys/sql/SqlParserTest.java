@@ -30,7 +30,7 @@ class SqlParserTest {
     }
 
     private static Object constantOf(String sql) {
-        return ((SelectStatement) one(sql)).where().orElseThrow().constant();
+        return ((SelectStatement) one(sql)).filters().get(0).constant();
     }
 
     private static SqlParseException error(String sql) {
@@ -66,16 +66,49 @@ class SqlParserTest {
     @Test
     void selectWithoutWhereParsesToTheExpectedAst() {
         assertEquals(
-                new SelectStatement("trips", Optional.empty()),
+                new SelectStatement(List.of("trips"), List.of(), List.of()),
                 one("SELECT * FROM trips;"));
     }
 
     @Test
     void selectWithWhereParsesToTheExpectedAst() {
         assertEquals(
-                new SelectStatement("trips", Optional.of(
-                        new Predicate("distance", Comparison.GREATER_THAN, 100L))),
+                new SelectStatement(List.of("trips"), List.of(
+                        new Predicate("distance", Comparison.GREATER_THAN, 100L)), List.of()),
                 one("SELECT * FROM trips WHERE distance > 100;"));
+    }
+
+    @Test
+    void aTableListKeepsItsOrder() {
+        assertEquals(
+                new SelectStatement(List.of("orders", "customers", "products"), List.of(), List.of()),
+                one("SELECT * FROM orders, customers, products;"));
+    }
+
+    @Test
+    void columnToColumnIsAJoinAndColumnToConstantIsAFilter() {
+        assertEquals(
+                new SelectStatement(List.of("orders", "customers"),
+                        List.of(new Predicate("c_city", Comparison.EQUALS, "Copenhagen")),
+                        List.of(new JoinPredicate("o_custname", "c_name"))),
+                one("SELECT * FROM orders, customers"
+                        + " WHERE o_custname = c_name AND c_city = 'Copenhagen';"));
+    }
+
+    @Test
+    void anAndChainKeepsTheOrderWithinEachList() {
+        SelectStatement select = (SelectStatement) one("""
+                SELECT * FROM orders, customers, products, cities
+                WHERE o_custname = c_name AND o_quantity > 1 AND o_prodname = p_name
+                AND c_city = ct_city AND p_price < 1000.0;""");
+
+        assertEquals(List.of(
+                new Predicate("o_quantity", Comparison.GREATER_THAN, 1L),
+                new Predicate("p_price", Comparison.LESS_THAN, 1000.0)), select.filters());
+        assertEquals(List.of(
+                new JoinPredicate("o_custname", "c_name"),
+                new JoinPredicate("o_prodname", "p_name"),
+                new JoinPredicate("c_city", "ct_city")), select.joins());
     }
 
     @Test
@@ -152,10 +185,10 @@ class SqlParserTest {
     @Test
     void keywordsAreCaseInsensitive() {
         assertEquals(
-                new SelectStatement("trips", Optional.empty()),
+                new SelectStatement(List.of("trips"), List.of(), List.of()),
                 one("select * from trips;"));
         assertEquals(
-                new SelectStatement("trips", Optional.empty()),
+                new SelectStatement(List.of("trips"), List.of(), List.of()),
                 one("SeLeCt * FrOm trips;"));
     }
 
@@ -163,8 +196,8 @@ class SqlParserTest {
     void identifiersKeepTheCaseTheyWereWrittenIn() {
         SelectStatement select = (SelectStatement) one("SELECT * FROM Trips WHERE City = 'x';");
 
-        assertEquals("Trips", select.tableName());
-        assertEquals("City", select.where().orElseThrow().columnName());
+        assertEquals(List.of("Trips"), select.tableNames());
+        assertEquals("City", select.filters().get(0).columnName());
     }
 
     @Test
@@ -186,6 +219,10 @@ class SqlParserTest {
                 arguments("SELECT * FROM t WHERE c = 'oops;", 26),
                 arguments("SELECT * trips;", 9),
                 arguments("SELECT * FROM trips; garbage", 21),
+                arguments("DELETE FROM trips WHERE a = b;", 28),
+                arguments("DELETE FROM a, b;", 13),
+                arguments("SELECT * FROM a, b WHERE x = y OR z = 1;", 31),
+                arguments("SELECT * FROM a, b WHERE x = y AND;", 34),
                 // whole numbers just outside the LONG range
                 arguments("SELECT * FROM t WHERE x = 9223372036854775808;", 26),
                 arguments("SELECT * FROM t WHERE x = -9223372036854775809;", 26));
@@ -233,11 +270,11 @@ class SqlParserTest {
     @Test
     void aCommentCanBeTheOnlyThingOnALine() {
         assertEquals(
-                new SelectStatement("t", Optional.empty()),
+                new SelectStatement(List.of("t"), List.of(), List.of()),
                 one("-- a comment\nSELECT * FROM t;\n-- another\n"));
     }
 
     private static Comparison comparisonOf(String sql) {
-        return ((SelectStatement) one(sql)).where().orElseThrow().comparison();
+        return ((SelectStatement) one(sql)).filters().get(0).comparison();
     }
 }

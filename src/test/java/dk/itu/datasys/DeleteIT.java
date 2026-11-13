@@ -118,7 +118,7 @@ class DeleteIT {
     @Test
     void aSelectPlannedBeforeADeleteStillSeesTheDeletedRows(@TempDir Path dir) {
         StorageEngine engine = copy(dir);
-        Plan pinned = new Planner(engine).plan(new SelectStatement("trips", Optional.empty()));
+        Plan pinned = new Planner(engine).plan(new SelectStatement(List.of("trips"), List.of(), List.of()));
 
         engine.delete("trips", where("city", Comparison.EQUALS, "Odense"));
 
@@ -152,7 +152,7 @@ class DeleteIT {
     }
 
     private static List<List<Object>> selectAll(StorageEngine engine) {
-        return drain(new Planner(engine).plan(new SelectStatement("trips", Optional.empty())).root());
+        return drain(new Planner(engine).plan(new SelectStatement(List.of("trips"), List.of(), List.of())).root());
     }
 
     private static List<List<Object>> drain(Operator operator) {
