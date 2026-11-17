@@ -62,6 +62,16 @@ class PlannerIT {
     }
 
     @Test
+    void severalFiltersOnOneTableAllApplyAndAllPrune(@TempDir Path dir) {
+        Plan plan = new Planner(copy(dir)).plan(new SelectStatement(List.of("trips"), List.of(
+                new Predicate("distance", Comparison.GREATER_THAN, 50L),
+                new Predicate("city", Comparison.EQUALS, "Odense")), List.of()));
+
+        assertEquals(new ScanStats(4, 1, 3), plan.scanStats());
+        assertEquals(List.of(List.of("Odense", 95L, 120.75)), drain(plan.root()));
+    }
+
+    @Test
     void aWhereClauseProducesAFilterOverAScan(@TempDir Path dir) {
         Plan plan = planWhere(dir, "distance", Comparison.GREATER_THAN, 100L);
 
