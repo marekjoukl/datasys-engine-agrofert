@@ -183,6 +183,17 @@ class PlannerIT {
         assertEquals(List.of(100L, "Anna", "Bike", 1L, "Anna", "Copenhagen"), rows.get(0));
     }
 
+    @Test
+    void rejectsATableThatNoJoinPredicateConnectsToTheTablesBeforeIt(@TempDir Path dir) {
+        Planner planner = new Planner(testbed(dir));
+        SelectStatement select = new SelectStatement(List.of("orders", "cities", "customers"), List.of(),
+                List.of(new JoinPredicate("o_custname", "c_name"), new JoinPredicate("c_city", "ct_city")));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> planner.plan(select));
+        assertEquals("no join predicate connects cities to the tables before it; reorder the FROM list",
+                error.getMessage());
+    }
+
     private static StorageEngine testbed(Path dir) {
         StorageEngine engine = new StorageEngine(dir, 2);
         engine.createTable("orders", List.of(
