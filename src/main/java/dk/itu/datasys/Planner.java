@@ -72,18 +72,29 @@ public final class Planner {
 
     private static JoinKeys connect(JoinedSchema joined, List<JoinPredicate> joins,
             List<String> joinedTables, String tableName) {
+        JoinKeys keys = null;
         for (JoinPredicate join : joins) {
             JoinedSchema.Column left = joined.resolve(join.leftColumn());
             JoinedSchema.Column right = joined.resolve(join.rightColumn());
+            JoinKeys candidate = null;
             if (right.table().equals(tableName) && joinedTables.contains(left.table())) {
-                return new JoinKeys(left.index(), right.localIndex());
+                candidate = new JoinKeys(left.index(), right.localIndex());
+            } else if (left.table().equals(tableName) && joinedTables.contains(right.table())) {
+                candidate = new JoinKeys(right.index(), left.localIndex());
             }
-            if (left.table().equals(tableName) && joinedTables.contains(right.table())) {
-                return new JoinKeys(right.index(), left.localIndex());
+            if (candidate != null && keys != null) {
+                throw new IllegalArgumentException("only one join predicate may connect two tables: "
+                        + join.leftColumn() + " = " + join.rightColumn() + " is left over");
+            }
+            if (candidate != null) {
+                keys = candidate;
             }
         }
-        throw new IllegalArgumentException("no join predicate connects " + tableName
-                + " to the tables before it; reorder the FROM list");
+        if (keys == null) {
+            throw new IllegalArgumentException("no join predicate connects " + tableName
+                    + " to the tables before it; reorder the FROM list");
+        }
+        return keys;
     }
 
     private record Pipeline(Operator root, Plan.TableScan scan) { }

@@ -194,6 +194,17 @@ class PlannerIT {
                 error.getMessage());
     }
 
+    @Test
+    void rejectsASecondJoinPredicateBetweenTheSameTables(@TempDir Path dir) {
+        Planner planner = new Planner(testbed(dir));
+        SelectStatement select = new SelectStatement(List.of("customers", "cities"), List.of(),
+                List.of(new JoinPredicate("c_city", "ct_city"), new JoinPredicate("c_name", "ct_country")));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> planner.plan(select));
+        assertEquals("only one join predicate may connect two tables: c_name = ct_country is left over",
+                error.getMessage());
+    }
+
     private static StorageEngine testbed(Path dir) {
         StorageEngine engine = new StorageEngine(dir, 2);
         engine.createTable("orders", List.of(
