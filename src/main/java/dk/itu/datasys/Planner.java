@@ -1,5 +1,6 @@
 package dk.itu.datasys;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import dk.itu.datasys.sql.SelectStatement;
@@ -18,16 +19,18 @@ public final class Planner {
         Snapshot snapshot = engine.snapshot(tableName);
         int total = snapshot.partitions().size();
 
-        List<PartitionMeta> partitions;
-        Operator root;
+        List<ColumnPredicate> predicates = select.filters().stream()
+                .map(filter -> ColumnPredicate.of(schema, filter))
+                .toList();
 
-        if (select.filters().isEmpty()) {
-            partitions = snapshot.partitions();
-            root = new ScanOperator(engine, tableName, partitions);
-        } else {
-            ColumnPredicate predicate = ColumnPredicate.of(schema, select.filters().get(0));
-            partitions = Pruner.partitionsThatMayMatch(snapshot, schema, predicate);
-            root = new FilterOperator(new ScanOperator(engine, tableName, partitions), predicate);
+        List<PartitionMeta> partitions = new ArrayList<>(snapshot.partitions());
+        for (ColumnPredicate predicate : predicates) {
+            partitions.retainAll(Pruner.partitionsThatMayMatch(snapshot, schema, predicate));
+        }
+
+        Operator root = new ScanOperator(engine, tableName, partitions);
+        for (ColumnPredicate predicate : predicates) {
+            root = new FilterOperator(root, predicate);
         }
 
         int read = partitions.size();
