@@ -27,6 +27,15 @@ class EngineIT {
     private record Result(int status, String out, String err) { }
 
     @Test
+    void theJoinTestbedReturnsTheSameRowsAsDuckDb(@TempDir Path dir) throws IOException {
+        Result result = run(dir, "-f", "src/test/resources/testbed/testbed.sql");
+
+        assertEquals(0, result.status(), result.err());
+        assertEquals(Files.readAllLines(Path.of("src/test/resources/testbed/duckdb.csv")).stream().sorted().toList(),
+                result.out().lines().sorted().toList());
+    }
+
+    @Test
     void aScriptPrintsItsRowsAsHeaderlessCsv(@TempDir Path dir) {
         Result result = run(dir, "-f", script(dir, SETUP + "SELECT * FROM trips WHERE distance > 100;"));
 
