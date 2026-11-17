@@ -34,6 +34,7 @@ public final class Planner {
         }
 
         int read = partitions.size();
-        return new Plan(root, new ScanStats(total, read, total - read), snapshot.version());
+        ScanStats stats = new ScanStats(total, read, total - read);
+        return new Plan(root, List.of(new Plan.TableScan(tableName, snapshot.version(), stats)));
     }
 }

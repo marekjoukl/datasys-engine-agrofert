@@ -95,11 +95,11 @@ class PlannerIT {
 
         engine.copyFile("trips", SORTED_CSV);
 
-        assertEquals(1, pinned.version());
+        assertEquals(1, pinned.scans().get(0).version());
         assertEquals(8, drain(pinned.root()).size(), "the second copy is not visible to this plan");
 
         Plan fresh = planner.plan(new SelectStatement(List.of("trips"), List.of(), List.of()));
-        assertEquals(2, fresh.version());
+        assertEquals(2, fresh.scans().get(0).version());
         assertEquals(16, drain(fresh.root()).size());
     }
 

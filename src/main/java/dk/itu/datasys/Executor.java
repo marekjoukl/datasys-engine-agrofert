@@ -6,6 +6,7 @@ import static dk.itu.datasys.StorageEngine.millisSince;
 import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -83,9 +84,9 @@ public final class Executor {
 
                     LOGGER.debug("statement=SELECT table={} rowsOut={} partitionsRead={}"
                             + " partitionsPruned={} version={} queryMs={} durationMs={}",
-                            field(select.tableNames().get(0)), output.rowsOut(),
+                            field(joined(plan.scans(), Plan.TableScan::table)), output.rowsOut(),
                             plan.scanStats().partitionsRead(), plan.scanStats().partitionsPruned(),
-                            plan.version(),
+                            joined(plan.scans(), Plan.TableScan::version),
                             millisSince(startedAt + output.writeNanos()), millisSince(startedAt));
                 }
                 case DeleteStatement delete -> {
@@ -135,6 +136,10 @@ public final class Executor {
             root.close();
         }
         return new Output(rowsOut, writeNanos);
+    }
+
+    private static <T> String joined(List<T> items, Function<T, Object> part) {
+        return items.stream().map(item -> String.valueOf(part.apply(item))).collect(Collectors.joining(";"));
     }
 
     private static String toCsv(Object[] row) {
