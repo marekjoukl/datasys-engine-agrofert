@@ -82,7 +82,8 @@ public final class Planner {
                 return new JoinKeys(right.index(), left.localIndex());
             }
         }
-        throw new IllegalStateException();
+        throw new IllegalArgumentException("no join predicate connects " + tableName
+                + " to the tables before it; reorder the FROM list");
     }
 
     private record Pipeline(Operator root, Plan.TableScan scan) { }
