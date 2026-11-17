@@ -3,6 +3,8 @@ package dk.itu.datasys;
 import java.util.ArrayList;
 import java.util.List;
 
+import dk.itu.datasys.sql.JoinPredicate;
+import dk.itu.datasys.sql.Predicate;
 import dk.itu.datasys.sql.SelectStatement;
 
 public final class Planner {
@@ -14,12 +16,42 @@ public final class Planner {
     }
 
     public Plan plan(SelectStatement select) {
-        String tableName = select.tableNames().get(0);
-        List <ColumnSpec> schema = engine.schema(tableName);
-        Snapshot snapshot = engine.snapshot(tableName);
+        List<String> tableNames = select.tableNames();
+        JoinedSchema joined = new JoinedSchema(tableNames, engine::schema);
+        List<Snapshot> snapshots = tableNames.stream().map(engine::snapshot).toList();
+
+        List<Plan.TableScan> scans = new ArrayList<>();
+        List<String> joinedTables = new ArrayList<>();
+        Operator root = null;
+
+        for (int i = 0; i < tableNames.size(); i++) {
+            String tableName = tableNames.get(i);
+            List<Predicate> filters = select.filters().stream()
+                    .filter(filter -> joined.resolve(filter.columnName()).table().equals(tableName))
+                    .toList();
+            Pipeline pipeline = pipeline(tableName, snapshots.get(i), filters);
+            scans.add(pipeline.scan());
+
+            if (root == null) {
+                root = pipeline.root();
+            } else {
+                JoinKeys keys = connect(joined, select.joins(), joinedTables, tableName);
+                List<String> tables = new ArrayList<>(joinedTables);
+                tables.add(tableName);
+                root = new HashJoinOperator(root, pipeline.root(), keys.build(), keys.probe(),
+                        String.join(";", tables));
+            }
+            joinedTables.add(tableName);
+        }
+
+        return new Plan(root, scans);
+    }
+
+    private Pipeline pipeline(String tableName, Snapshot snapshot, List<Predicate> filters) {
+        List<ColumnSpec> schema = engine.schema(tableName);
         int total = snapshot.partitions().size();
 
-        List<ColumnPredicate> predicates = select.filters().stream()
+        List<ColumnPredicate> predicates = filters.stream()
                 .map(filter -> ColumnPredicate.of(schema, filter))
                 .toList();
 
@@ -35,6 +67,25 @@ public final class Planner {
 
         int read = partitions.size();
         ScanStats stats = new ScanStats(total, read, total - read);
-        return new Plan(root, List.of(new Plan.TableScan(tableName, snapshot.version(), stats)));
+        return new Pipeline(root, new Plan.TableScan(tableName, snapshot.version(), stats));
     }
+
+    private static JoinKeys connect(JoinedSchema joined, List<JoinPredicate> joins,
+            List<String> joinedTables, String tableName) {
+        for (JoinPredicate join : joins) {
+            JoinedSchema.Column left = joined.resolve(join.leftColumn());
+            JoinedSchema.Column right = joined.resolve(join.rightColumn());
+            if (right.table().equals(tableName) && joinedTables.contains(left.table())) {
+                return new JoinKeys(left.index(), right.localIndex());
+            }
+            if (left.table().equals(tableName) && joinedTables.contains(right.table())) {
+                return new JoinKeys(right.index(), left.localIndex());
+            }
+        }
+        throw new IllegalStateException();
+    }
+
+    private record Pipeline(Operator root, Plan.TableScan scan) { }
+
+    private record JoinKeys(int build, int probe) { }
 }

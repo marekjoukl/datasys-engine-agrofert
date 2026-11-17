@@ -28,6 +28,22 @@ class LoggingIT {
 
     private static final String LONG_TRIPS = "SELECT * FROM trips WHERE distance > 200;";
 
+    private static final String TESTBED = """
+            CREATE TABLE orders (o_orderkey LONG, o_custname STRING, o_prodname STRING, o_quantity LONG);
+            CREATE TABLE products (p_name STRING, p_price DOUBLE);
+            CREATE TABLE customers (c_name STRING, c_city STRING);
+            CREATE TABLE cities (ct_city STRING, ct_country STRING, ct_population LONG);
+            COPY orders FROM 'src/test/resources/testbed/orders.csv';
+            COPY products FROM 'src/test/resources/testbed/products.csv';
+            COPY customers FROM 'src/test/resources/testbed/customers.csv';
+            COPY cities FROM 'src/test/resources/testbed/cities.csv';
+            """;
+
+    private static final String FOUR_TABLES = """
+            SELECT * FROM orders, customers, products, cities
+            WHERE o_custname = c_name AND o_prodname = p_name AND c_city = ct_city;
+            """;
+
     @Test
     void everyStatementEmitsSevenFieldCsvLines(@TempDir Path dir) throws Exception {
         List<String> lines = run(dir, LONG_TRIPS);
@@ -122,6 +138,40 @@ class LoggingIT {
         assertTrue(
                 messages(lines).stream().anyMatch(m -> m.startsWith(
                         "statement=SELECT table=trips rowsOut=2 partitionsRead=1 partitionsPruned=3 version=1 ")),
+                messages(lines).toString());
+    }
+
+    @Test
+    void everyJoinLogsItsSizesLeftDeepInFromListOrder(@TempDir Path dir) throws Exception {
+        List<String> joins = joinLines(execute(dir, TESTBED + FOUR_TABLES));
+
+        assertEquals(List.of(
+                "tables=orders;customers rowsBuild=4 keys=3 rowsProbe=3 rowsOut=4",
+                "tables=orders;customers;products rowsBuild=4 keys=2 rowsProbe=2 rowsOut=4",
+                "tables=orders;customers;products;cities rowsBuild=4 keys=2 rowsProbe=2 rowsOut=4"),
+                joins);
+    }
+
+    @Test
+    void aFilterRunsBelowTheJoinsSoTheJoinProbesFewerRows(@TempDir Path dir) throws Exception {
+        List<String> joins = joinLines(execute(dir, TESTBED + """
+                SELECT * FROM orders, customers, products
+                WHERE o_custname = c_name AND o_prodname = p_name AND c_city = 'Copenhagen';
+                """));
+
+        assertEquals(List.of(
+                "tables=orders;customers rowsBuild=4 keys=3 rowsProbe=2 rowsOut=3",
+                "tables=orders;customers;products rowsBuild=3 keys=2 rowsProbe=2 rowsOut=3"),
+                joins);
+    }
+
+    @Test
+    void aJoinSummaryLineNamesEveryTableAndItsVersion(@TempDir Path dir) throws Exception {
+        List<String> lines = execute(dir, TESTBED + FOUR_TABLES);
+
+        assertTrue(messages(lines).stream().anyMatch(m -> m.startsWith(
+                        "statement=SELECT table=orders;customers;products;cities rowsOut=4"
+                        + " partitionsRead=6 partitionsPruned=0 version=1;1;1;1 ")),
                 messages(lines).toString());
     }
 
@@ -334,6 +384,13 @@ class LoggingIT {
 
     private static List<String> messages(List<String> lines) {
         return lines.stream().map(line -> line.split(",", 7)[6]).toList();
+    }
+
+    private static List<String> joinLines(List<String> lines) {
+        return lines.stream()
+                .filter(line -> line.split(",", 7)[5].equals("HashJoinOperator"))
+                .map(line -> line.split(",", 7)[6])
+                .toList();
     }
 
     private static long valueOf(String message, String key) {
